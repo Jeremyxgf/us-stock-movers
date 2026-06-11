@@ -13,18 +13,18 @@ StockAnalysis 的接口只返回「最近交易日」，没法查历史。所以
 ## 文件
 | 文件 | 作用 |
 |---|---|
-| `index 5.html` | 网页。读 `data/` 下的快照，本地过滤排名。 |
+| `index.html` | 网页。读 `data/` 下的快照，本地过滤排名。 |
 | `fetch_snapshot.py` | 抓取脚本。翻完全市场（约 5500+ 只）写入 `data/<日期>.json` 并更新 `data/manifest.json`。仅用 Python 标准库。 |
 | `.github/workflows/daily.yml` | GitHub Actions，每个交易日定时跑脚本并自动提交数据。 |
 | `data/manifest.json` | 可用交易日清单，网页据此限定可选日期。 |
 | `data/<日期>.json` | 当天全市场快照（对象数组）。 |
 
 ## 本地使用
-浏览器有同源限制，直接双击打开 `index 5.html` 读不到本地 JSON，要起一个静态服务器：
+浏览器有同源限制，直接双击打开 `index.html` 读不到本地 JSON，要起一个静态服务器：
 ```bash
 cd StockWeb
 python3 -m http.server 8765
-# 浏览器打开 http://localhost:8765/index%205.html
+# 浏览器打开 http://localhost:8765/
 ```
 手动抓一次当天数据：
 ```bash
@@ -37,10 +37,7 @@ python3 fetch_snapshot.py
 3. **Settings → Actions → General → Workflow permissions**：选 `Read and write permissions`（让定时任务能提交数据）。
 4. 之后 `.github/workflows/daily.yml` 会在每个交易日（22:30 UTC，美股收盘后）自动抓取并提交；
    也可在 **Actions** 页点 `Daily market snapshot → Run workflow` 手动触发一次。
-5. 访问 `https://<用户名>.github.io/<仓库名>/index%205.html`。
-
-> **GitHub Pages 入口提示**：Pages 默认首页是 `index.html`。本页文件名带空格（`index 5.html`），
-> 所以要用 `/index%205.html` 访问；想用根地址直接打开，可把它**重命名为 `index.html`**。
+5. 访问 `https://<用户名>.github.io/<仓库名>/`（首页就是 `index.html`）。
 
 ## 数据列说明
 代码、公司名、涨跌幅、收盘价、成交额、**换手率（= 成交量 ÷ 流通股 float）**、市值——
