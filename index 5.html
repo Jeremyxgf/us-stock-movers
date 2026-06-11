@@ -1,0 +1,726 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>美股涨跌幅动态榜单</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --ink: #172033;
+      --muted: #637083;
+      --line: #dfe5ee;
+      --red: #b42318;
+      --green: #087443;
+      --blue: #2457a6;
+      --shadow: 0 18px 48px rgba(23, 32, 51, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background:
+        linear-gradient(135deg, rgba(8, 116, 67, 0.08), transparent 34%),
+        linear-gradient(225deg, rgba(180, 35, 24, 0.08), transparent 38%),
+        var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.5;
+    }
+
+    .wrap {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 40px;
+    }
+
+    header {
+      display: grid;
+      gap: 18px;
+      grid-template-columns: 1fr auto;
+      align-items: end;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(30px, 4vw, 52px);
+      letter-spacing: 0;
+      line-height: 1.06;
+    }
+
+    .subtitle {
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .stamp {
+      display: inline-flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 220px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.78);
+      box-shadow: var(--shadow);
+      text-align: right;
+    }
+
+    .stamp b {
+      font-size: 18px;
+    }
+
+    .stamp span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr auto;
+      gap: 14px;
+      align-items: end;
+      margin: 0 0 18px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    input {
+      width: 100%;
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 9px 11px;
+      color: var(--ink);
+      font: inherit;
+      font-size: 15px;
+      background: #fbfdff;
+    }
+
+    input:focus {
+      border-color: var(--blue);
+      outline: 3px solid rgba(36, 87, 166, 0.16);
+    }
+
+    button {
+      min-height: 42px;
+      border: 0;
+      border-radius: 8px;
+      padding: 0 18px;
+      background: var(--blue);
+      color: #fff;
+      font: inherit;
+      font-weight: 750;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.58;
+      cursor: wait;
+    }
+
+    .status {
+      min-height: 22px;
+      margin: -6px 2px 14px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .status.error {
+      color: var(--red);
+      font-weight: 650;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin: 0 0 18px;
+    }
+
+    .card {
+      padding: 16px 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .card .label {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .card .value {
+      margin-top: 5px;
+      font-size: 25px;
+      font-weight: 750;
+    }
+
+    .green .value,
+    .gain {
+      color: var(--green);
+    }
+
+    .red .value,
+    .loss {
+      color: var(--red);
+    }
+
+    .blue .value {
+      color: var(--blue);
+    }
+
+    .tables {
+      display: grid;
+      gap: 22px;
+    }
+
+    .table-panel {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .table-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .table-head strong {
+      font-size: 17px;
+    }
+
+    .table-head span {
+      color: var(--muted);
+      font-size: 13px;
+      text-align: right;
+    }
+
+    .scroll {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      min-width: 920px;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #f9fbfe;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    td.rank,
+    th.rank {
+      width: 56px;
+      text-align: center;
+    }
+
+    td.symbol,
+    th.symbol,
+    td.name,
+    th.name {
+      text-align: left;
+    }
+
+    td.symbol {
+      color: var(--blue);
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+
+    td.name {
+      max-width: 320px;
+      overflow: hidden;
+      color: #30394b;
+      text-overflow: ellipsis;
+    }
+
+    .gain,
+    .loss {
+      font-weight: 750;
+    }
+
+    .barcell {
+      min-width: 180px;
+    }
+
+    .bar {
+      display: grid;
+      grid-template-columns: minmax(26px, 1fr) 62px;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .track {
+      height: 9px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e9edf5;
+    }
+
+    .fill {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+    }
+
+    .bar.gain .fill {
+      background: linear-gradient(90deg, #48c78e, var(--green));
+    }
+
+    .bar.loss .fill {
+      background: linear-gradient(90deg, #e97c6f, var(--red));
+    }
+
+    tbody tr:hover {
+      background: #f8fbff;
+    }
+
+    tbody tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .empty {
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .note {
+      margin: 14px 2px 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .note a {
+      color: var(--blue);
+      text-decoration: none;
+      font-weight: 650;
+    }
+
+    @media (max-width: 900px) {
+      .cards {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .controls {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      button {
+        grid-column: 1 / -1;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .wrap {
+        width: min(100% - 22px, 1180px);
+        padding-top: 22px;
+      }
+
+      header,
+      .cards,
+      .controls {
+        grid-template-columns: 1fr;
+      }
+
+      button {
+        grid-column: auto;
+      }
+
+      .stamp {
+        width: 100%;
+        min-width: 0;
+        text-align: left;
+      }
+
+      .table-head {
+        flex-direction: column;
+      }
+
+      .table-head span {
+        text-align: left;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <div>
+        <h1>美股涨跌幅动态榜单</h1>
+        <p class="subtitle">设置交易日期、榜单数量和最低公司市值，动态查询美股涨幅榜与跌幅榜。</p>
+      </div>
+      <div class="stamp" aria-label="数据状态">
+        <b id="trade-date">正在查询</b>
+        <span id="source-label">StockAnalysis 每日快照</span>
+      </div>
+    </header>
+
+    <form class="controls" id="query-form">
+      <label>
+        Top 数量
+        <input id="top-count" type="number" min="1" max="100" step="1" value="30" inputmode="numeric">
+      </label>
+      <label>
+        最低市值（十亿美元 / B）
+        <input id="min-cap" type="number" min="0" max="10000" step="0.1" value="2" inputmode="decimal">
+      </label>
+      <label>
+        交易日期
+        <input id="trade-date-input" type="date">
+      </label>
+      <button id="query-button" type="submit">查询</button>
+    </form>
+    <div class="status" id="status">准备查询。</div>
+
+    <section class="cards" aria-label="摘要">
+      <div class="card green">
+        <div class="label">最大涨幅</div>
+        <div class="value" id="max-gain">-</div>
+      </div>
+      <div class="card red">
+        <div class="label">最大跌幅</div>
+        <div class="value" id="max-loss">-</div>
+      </div>
+      <div class="card blue">
+        <div class="label">市值门槛</div>
+        <div class="value" id="cap-card">-</div>
+      </div>
+      <div class="card">
+        <div class="label">榜单数量</div>
+        <div class="value" id="count-card">-</div>
+      </div>
+    </section>
+
+    <section class="tables" aria-label="涨跌幅榜">
+      <section class="table-panel" aria-label="涨幅榜">
+        <div class="table-head">
+          <strong id="gainers-title">涨幅榜</strong>
+          <span id="gainers-meta">等待查询。</span>
+        </div>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th class="rank">排名</th>
+                <th class="symbol">代码</th>
+                <th class="name">公司</th>
+                <th>涨幅</th>
+                <th class="barcell">可视化</th>
+                <th>收盘价</th>
+                <th>成交量</th>
+                <th>换手率</th>
+                <th>市值</th>
+              </tr>
+            </thead>
+            <tbody id="gainers-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="table-panel" aria-label="跌幅榜">
+        <div class="table-head">
+          <strong id="losers-title">跌幅榜</strong>
+          <span id="losers-meta">等待查询。</span>
+        </div>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th class="rank">排名</th>
+                <th class="symbol">代码</th>
+                <th class="name">公司</th>
+                <th>跌幅</th>
+                <th class="barcell">可视化</th>
+                <th>收盘价</th>
+                <th>成交量</th>
+                <th>换手率</th>
+                <th>市值</th>
+              </tr>
+            </thead>
+            <tbody id="losers-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <p class="note">
+      数据源：<a href="https://stockanalysis.com/">StockAnalysis</a> 全市场每日快照。由 <code>fetch_snapshot.py</code> 每个交易日抓一次全市场（约 5500+ 只）存入 <code>data/&lt;日期&gt;.json</code>，
+      网页只读本地快照、在浏览器里按 Top 数量与最低市值过滤排名。<strong>历史从开始采集那天起逐日积累</strong>，更早的日期没有数据。
+      换手率 = 成交量 ÷ 流通股（StockAnalysis 原生 float 字段）。本页仅供参考，不构成投资建议。
+    </p>
+  </main>
+
+  <script>
+    // 网页只读由 fetch_snapshot.py 每日生成的本地快照：
+    //   data/manifest.json     —— 可用交易日清单
+    //   data/<日期>.json        —— 当天全市场快照（对象数组）
+    // 全部同源静态文件，无需 API key、无跨域问题。
+    const DATA_BASE = "./data";
+
+    const els = {
+      form: document.getElementById("query-form"),
+      topCount: document.getElementById("top-count"),
+      minCap: document.getElementById("min-cap"),
+      tradeDateInput: document.getElementById("trade-date-input"),
+      button: document.getElementById("query-button"),
+      status: document.getElementById("status"),
+      tradeDate: document.getElementById("trade-date"),
+      maxGain: document.getElementById("max-gain"),
+      maxLoss: document.getElementById("max-loss"),
+      capCard: document.getElementById("cap-card"),
+      countCard: document.getElementById("count-card"),
+      gainersTitle: document.getElementById("gainers-title"),
+      losersTitle: document.getElementById("losers-title"),
+      gainersMeta: document.getElementById("gainers-meta"),
+      losersMeta: document.getElementById("losers-meta"),
+      gainersBody: document.getElementById("gainers-body"),
+      losersBody: document.getElementById("losers-body")
+    };
+
+    function sanitizeTopCount(value) {
+      const parsed = Math.floor(Number(value));
+      if (!Number.isFinite(parsed)) return 30;
+      return Math.min(100, Math.max(1, parsed));
+    }
+
+    function sanitizeMinCap(value) {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed)) return 2;
+      return Math.max(0, parsed);
+    }
+
+    // ---- 本地快照加载（同源静态文件，浏览器自带 HTTP 缓存，再加一层内存缓存） ----
+    const dayCache = new Map();
+    let availableDates = [];
+
+    async function loadManifest() {
+      const res = await fetch(`${DATA_BASE}/manifest.json`, { cache: "no-cache" });
+      if (!res.ok) throw new Error(`无法加载日期清单 manifest.json（${res.status}）。是否已运行 fetch_snapshot.py？`);
+      const m = await res.json();
+      const dates = Array.isArray(m) ? m : (m.dates || []);
+      return dates.slice().sort();
+    }
+
+    // 读取某交易日快照；没有该文件返回 null
+    async function loadDay(date) {
+      if (dayCache.has(date)) return dayCache.get(date);
+      const res = await fetch(`${DATA_BASE}/${date}.json`);
+      if (res.status === 404) {
+        dayCache.set(date, null);
+        return null;
+      }
+      if (!res.ok) throw new Error(`加载 ${date} 快照失败（${res.status}）`);
+      const rows = await res.json();
+      dayCache.set(date, rows);
+      return rows;
+    }
+
+    // 给每一行补上换手率（成交量 / 流通股，沿用 StockAnalysis 原生 float 字段）
+    function withTurnover(rows) {
+      return rows.map((row) => {
+        const shares = Number(row.float) || Number(row.sharesOut);
+        return {
+          ...row,
+          turnoverRate: shares ? Number(row.volume) / shares : null
+        };
+      });
+    }
+
+    function formatPrice(value) {
+      return value < 1 ? `$${value.toFixed(4)}` : `$${value.toFixed(2)}`;
+    }
+
+    function formatCompact(value, money = false) {
+      const prefix = money ? "$" : "";
+      const abs = Math.abs(value);
+      if (abs >= 1e12) return `${prefix}${(value / 1e12).toFixed(2)}T`;
+      if (abs >= 1e9) return `${prefix}${(value / 1e9).toFixed(2)}B`;
+      if (abs >= 1e6) return `${prefix}${(value / 1e6).toFixed(2)}M`;
+      if (abs >= 1e3) return `${prefix}${(value / 1e3).toFixed(2)}K`;
+      return `${prefix}${Math.round(value).toLocaleString("en-US")}`;
+    }
+
+    function formatPercent(value) {
+      if (value === null || value === undefined || !Number.isFinite(Number(value))) return "-";
+      return `${(Number(value) * 100).toFixed(2)}%`;
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (ch) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      }[ch]));
+    }
+
+    function renderRows(rows, body, emptyText) {
+      if (!rows.length) {
+        body.innerHTML = `<tr><td class="empty" colspan="9">${emptyText}</td></tr>`;
+        return;
+      }
+
+      const max = Math.max(...rows.map((row) => Math.abs(row.change)));
+      body.innerHTML = rows.map((row, index) => {
+        const type = row.change >= 0 ? "gain" : "loss";
+        const sign = row.change > 0 ? "+" : "";
+        const changeText = `${sign}${Number(row.change).toFixed(2)}%`;
+        const width = (Math.abs(row.change) / max * 100).toFixed(1);
+        return `
+          <tr>
+            <td class="rank">${index + 1}</td>
+            <td class="symbol">${escapeHtml(row.s)}</td>
+            <td class="name">${escapeHtml(row.n)}</td>
+            <td class="${type}">${changeText}</td>
+            <td class="barcell">
+              <div class="bar ${type}">
+                <span class="track"><span class="fill" style="width:${width}%"></span></span>
+                <span>${changeText}</span>
+              </div>
+            </td>
+            <td>${formatPrice(Number(row.price))}</td>
+            <td>${formatCompact(Number(row.dollarVolume), true)}</td>
+            <td>${formatPercent(row.turnoverRate)}</td>
+            <td>${row.marketCap == null ? "-" : formatCompact(Number(row.marketCap), true)}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function setLoading(isLoading) {
+      els.button.disabled = isLoading;
+      els.button.textContent = isLoading ? "查询中" : "查询";
+      els.status.classList.remove("error");
+    }
+
+    function updateStatus(text, isError = false) {
+      els.status.textContent = text;
+      els.status.classList.toggle("error", isError);
+    }
+
+    async function runQuery(event) {
+      event?.preventDefault();
+      const topN = sanitizeTopCount(els.topCount.value);
+      const minCapB = sanitizeMinCap(els.minCap.value);
+      const minCapDollars = minCapB * 1_000_000_000;
+      els.topCount.value = topN;
+      els.minCap.value = minCapB;
+
+      setLoading(true);
+      try {
+        // 确保有日期清单
+        if (!availableDates.length) {
+          availableDates = await loadManifest();
+          if (availableDates.length) {
+            els.tradeDateInput.min = availableDates[0];
+            els.tradeDateInput.max = availableDates[availableDates.length - 1];
+          }
+        }
+        if (!availableDates.length) {
+          renderRows([], els.gainersBody, "暂无任何快照数据。");
+          renderRows([], els.losersBody, "暂无任何快照数据。");
+          els.tradeDate.textContent = "无数据";
+          updateStatus("还没有任何快照。请先运行 fetch_snapshot.py（或等每日 Actions 跑一次）。", true);
+          return;
+        }
+
+        const latest = availableDates[availableDates.length - 1];
+        const selectedTradeDate = els.tradeDateInput.value || latest;
+        const range = `已采集 ${availableDates[0]} ~ ${latest}（${availableDates.length} 天）`;
+
+        updateStatus(`正在查询 Top ${topN}，交易日 ${selectedTradeDate}，最低市值 ${formatCompact(minCapDollars, true)}...`);
+        els.gainersBody.innerHTML = `<tr><td class="empty" colspan="9">正在加载涨幅榜...</td></tr>`;
+        els.losersBody.innerHTML = `<tr><td class="empty" colspan="9">正在加载跌幅榜...</td></tr>`;
+
+        const raw = await loadDay(selectedTradeDate);
+        if (!raw) {
+          renderRows([], els.gainersBody, "该日期没有快照。");
+          renderRows([], els.losersBody, "该日期没有快照。");
+          els.tradeDate.textContent = "无数据";
+          updateStatus(`交易日 ${selectedTradeDate} 没有快照（可能不是交易日，或当天未采集）。${range}。`, true);
+          return;
+        }
+        els.tradeDateInput.value = selectedTradeDate;
+
+        const enriched = withTurnover(raw).filter((row) => Number(row.marketCap) >= minCapDollars);
+        const gainers = enriched
+          .filter((row) => Number(row.change) > 0)
+          .sort((a, b) => b.change - a.change)
+          .slice(0, topN);
+        const losers = enriched
+          .filter((row) => Number(row.change) < 0)
+          .sort((a, b) => a.change - b.change)
+          .slice(0, topN);
+
+        renderRows(gainers, els.gainersBody, "没有找到符合条件的上涨股票。");
+        renderRows(losers, els.losersBody, "没有找到符合条件的下跌股票。");
+
+        els.tradeDate.textContent = selectedTradeDate;
+        els.gainersTitle.textContent = `涨幅榜 Top ${topN}`;
+        els.losersTitle.textContent = `跌幅榜 Top ${topN}`;
+        els.gainersMeta.textContent = `显示 ${gainers.length} 条，市值 >= ${formatCompact(minCapDollars, true)}。`;
+        els.losersMeta.textContent = `显示 ${losers.length} 条，市值 >= ${formatCompact(minCapDollars, true)}。`;
+        els.maxGain.textContent = gainers[0] ? `+${Number(gainers[0].change).toFixed(2)}%` : "-";
+        els.maxLoss.textContent = losers[0] ? `${Number(losers[0].change).toFixed(2)}%` : "-";
+        els.capCard.textContent = formatCompact(minCapDollars, true);
+        els.countCard.textContent = `${gainers.length + losers.length} 只`;
+
+        updateStatus(`查询完成：交易日 ${selectedTradeDate}，全市场 ${raw.length} 只，涨幅 ${gainers.length} 条，跌幅 ${losers.length} 条。${range}。`);
+      } catch (error) {
+        console.error(error);
+        updateStatus(`查询失败：${error.message || error}`, true);
+        els.tradeDate.textContent = "查询失败";
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    els.form.addEventListener("submit", runQuery);
+    runQuery();
+  </script>
+</body>
+</html>

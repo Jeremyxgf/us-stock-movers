@@ -1,0 +1,43 @@
+name: Daily market snapshot
+
+on:
+  schedule:
+    # 22:30 UTC，周一至周五 —— 美股收盘（20:00/21:00 UTC）后约 1.5-2.5 小时，
+    # 此时 StockAnalysis 的“最近交易日”已结算为当天。GitHub 定时任务可能延迟几分钟，无妨。
+    - cron: "30 22 * * 1-5"
+  workflow_dispatch: {}   # 也可在 Actions 页手动触发
+
+# 允许工作流把抓到的数据提交回仓库
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Fetch snapshot
+        run: python3 fetch_snapshot.py
+
+      - name: Commit data if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/
+          if git diff --staged --quiet; then
+            echo "没有新数据，跳过提交。"
+          else
+            git commit -m "data: snapshot $(date -u +%F)"
+            git push
+          fi

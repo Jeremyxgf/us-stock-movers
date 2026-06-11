@@ -1,0 +1,146 @@
+#!/usr/bin/env python3
+"""
+每日抓取 StockAnalysis 全市场最近交易日快照，按交易日存成 data/<date>.json，
+并维护 data/manifest.json（可用日期清单）。供静态网页 index 5.html 离线查询。
+
+只用 Python 标准库，GitHub Actions 无需 pip install。
+
+数据源是 StockAnalysis 的 screener 接口，只返回“最近交易日”——所以本脚本每天跑一次，
+把当天快照存下来，历史就从开始采集那天起逐日积累（无法补采过去的日期）。
+"""
+
+import json
+import os
+import sys
+import time
+import urllib.request
+import urllib.error
+from collections import Counter
+
+API = "https://stockanalysis.com/_api/endpoints/screener/table"
+COLUMNS = "no,s,n,change,priceDate,price,volume,dollarVolume,float,sharesOut,marketCap"
+PAGE_SIZE = 1000
+MAX_PAGES = 12          # 安全上限；当前全市场约 5600 只 ≈ 6 页
+RETRIES = 4
+
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+# 想保留的字段（写进每日 JSON 的每一行）
+ROW_FIELDS = ["s", "n", "change", "price", "volume", "dollarVolume",
+              "float", "sharesOut", "marketCap"]
+
+
+def build_url(page: int) -> str:
+    params = (
+        f"?type=s&m=change&s=desc&c={COLUMNS}&cn={PAGE_SIZE}"
+        f"&f=priceDate-isLastTradingDay&p={page}&i=stock-movers"
+    )
+    return API + params
+
+
+def fetch_json(url: str) -> dict:
+    last_err = None
+    for attempt in range(1, RETRIES + 1):
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (compatible; StockWeb-snapshot/1.0)",
+                    "Accept": "application/json",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as err:
+            last_err = err
+            wait = attempt * 2
+            print(f"  第 {attempt} 次请求失败：{err}，{wait}s 后重试", file=sys.stderr)
+            time.sleep(wait)
+    raise RuntimeError(f"多次重试仍失败：{url}\n{last_err}")
+
+
+def fetch_all_rows() -> list:
+    rows = []
+    seen = set()
+    results_count = None
+    for page in range(1, MAX_PAGES + 1):
+        payload = fetch_json(build_url(page))
+        data = (payload or {}).get("data") or {}
+        page_rows = data.get("data") or []
+        if results_count is None:
+            results_count = data.get("resultsCount")
+        for r in page_rows:
+            sym = r.get("s")
+            if sym and sym not in seen:
+                seen.add(sym)
+                rows.append(r)
+        print(f"  第 {page} 页：本页 {len(page_rows)} 行，累计 {len(rows)} / {results_count}")
+        if not page_rows:
+            break
+        if results_count and len(rows) >= results_count:
+            break
+        time.sleep(0.6)  # 礼貌性间隔，避免给数据源压力
+    return rows
+
+
+def pick_trade_date(rows: list) -> str:
+    """以出现最多的 priceDate 作为该快照的交易日（绝大多数行应相同）。"""
+    dates = [r.get("priceDate") for r in rows if r.get("priceDate")]
+    if not dates:
+        raise RuntimeError("返回数据里没有 priceDate，无法确定交易日")
+    return Counter(dates).most_common(1)[0][0]
+
+
+def slim(rows: list) -> list:
+    """只保留网页需要的字段，缩小体积。"""
+    out = []
+    for r in rows:
+        out.append({k: r.get(k) for k in ROW_FIELDS})
+    return out
+
+
+def update_manifest(date: str) -> list:
+    path = os.path.join(DATA_DIR, "manifest.json")
+    dates = []
+    if os.path.exists(path):
+        try:
+            with open(path, encoding="utf-8") as f:
+                existing = json.load(f)
+            dates = existing.get("dates", []) if isinstance(existing, dict) else list(existing)
+        except (json.JSONDecodeError, OSError):
+            dates = []
+    if date not in dates:
+        dates.append(date)
+    dates = sorted(set(dates))
+    manifest = {
+        "dates": dates,
+        "latest": dates[-1],
+        "count": len(dates),
+        "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, ensure_ascii=False, indent=2)
+    return dates
+
+
+def main() -> int:
+    os.makedirs(DATA_DIR, exist_ok=True)
+    print("抓取 StockAnalysis 全市场快照…")
+    rows = fetch_all_rows()
+    if not rows:
+        print("没有抓到任何数据，放弃写入。", file=sys.stderr)
+        return 1
+
+    date = pick_trade_date(rows)
+    out_path = os.path.join(DATA_DIR, f"{date}.json")
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(slim(rows), f, ensure_ascii=False, separators=(",", ":"))
+
+    dates = update_manifest(date)
+    size_kb = os.path.getsize(out_path) / 1024
+    print(f"已写入 {out_path}（{len(rows)} 行，{size_kb:.0f} KB）")
+    print(f"manifest 现有 {len(dates)} 个交易日，最新 {dates[-1]}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
