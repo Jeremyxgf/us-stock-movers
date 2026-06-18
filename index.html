@@ -84,7 +84,7 @@
 
     .controls {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr auto;
+      grid-template-columns: 1fr 1fr 1fr 1fr auto;
       gap: 14px;
       align-items: end;
       margin: 0 0 18px;
@@ -93,6 +93,23 @@
       border-radius: 8px;
       background: var(--panel);
       box-shadow: var(--shadow);
+    }
+
+    select {
+      width: 100%;
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 9px 11px;
+      color: var(--ink);
+      font: inherit;
+      font-size: 15px;
+      background: #fbfdff;
+    }
+
+    select:focus {
+      border-color: var(--blue);
+      outline: 3px solid rgba(36, 87, 166, 0.16);
     }
 
 
@@ -251,6 +268,24 @@
       text-transform: uppercase;
     }
 
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+    }
+
+    th.sortable:hover {
+      color: var(--ink);
+    }
+
+    th.sortable.active {
+      color: var(--blue);
+    }
+
+    th .arrow {
+      margin-left: 4px;
+      font-size: 10px;
+    }
+
     td.rank,
     th.rank {
       width: 56px;
@@ -390,7 +425,7 @@
     <header>
       <div>
         <h1>美股涨跌幅动态榜单</h1>
-        <p class="subtitle">设置交易日期、榜单数量和最低公司市值，动态查询美股涨幅榜与跌幅榜。</p>
+        <p class="subtitle">设置交易日期、榜单数量与最低市值；可按涨跌幅/成交额/换手率/市值排序，或点击表头任意列重排。</p>
       </div>
       <div class="stamp" aria-label="数据状态">
         <b id="trade-date">正在查询</b>
@@ -406,6 +441,15 @@
       <label>
         最低市值（十亿美元 / B）
         <input id="min-cap" type="number" min="0" max="10000" step="0.1" value="2" inputmode="decimal">
+      </label>
+      <label>
+        排序依据
+        <select id="sort-by">
+          <option value="change">涨跌幅（涨/跌双榜）</option>
+          <option value="dollarVolume">成交额（总榜）</option>
+          <option value="turnoverRate">换手率（总榜）</option>
+          <option value="marketCap">市值（总榜）</option>
+        </select>
       </label>
       <label>
         交易日期
@@ -435,7 +479,7 @@
     </section>
 
     <section class="tables" aria-label="涨跌幅榜">
-      <section class="table-panel" aria-label="涨幅榜">
+      <section class="table-panel" id="gainers-panel" aria-label="涨幅榜">
         <div class="table-head">
           <strong id="gainers-title">涨幅榜</strong>
           <span id="gainers-meta">等待查询。</span>
@@ -447,12 +491,12 @@
                 <th class="rank">排名</th>
                 <th class="symbol">代码</th>
                 <th class="name">公司</th>
-                <th>涨幅</th>
+                <th class="sortable" id="gainers-change-th" data-key="change">涨幅<span class="arrow"></span></th>
                 <th class="barcell">可视化</th>
-                <th>收盘价</th>
-                <th>成交量</th>
-                <th>换手率</th>
-                <th>市值</th>
+                <th class="sortable" data-key="price">收盘价<span class="arrow"></span></th>
+                <th class="sortable" data-key="dollarVolume">成交额<span class="arrow"></span></th>
+                <th class="sortable" data-key="turnoverRate">换手率<span class="arrow"></span></th>
+                <th class="sortable" data-key="marketCap">市值<span class="arrow"></span></th>
               </tr>
             </thead>
             <tbody id="gainers-body"></tbody>
@@ -460,7 +504,7 @@
         </div>
       </section>
 
-      <section class="table-panel" aria-label="跌幅榜">
+      <section class="table-panel" id="losers-panel" aria-label="跌幅榜">
         <div class="table-head">
           <strong id="losers-title">跌幅榜</strong>
           <span id="losers-meta">等待查询。</span>
@@ -472,12 +516,12 @@
                 <th class="rank">排名</th>
                 <th class="symbol">代码</th>
                 <th class="name">公司</th>
-                <th>跌幅</th>
+                <th class="sortable" data-key="change">跌幅<span class="arrow"></span></th>
                 <th class="barcell">可视化</th>
-                <th>收盘价</th>
-                <th>成交量</th>
-                <th>换手率</th>
-                <th>市值</th>
+                <th class="sortable" data-key="price">收盘价<span class="arrow"></span></th>
+                <th class="sortable" data-key="dollarVolume">成交额<span class="arrow"></span></th>
+                <th class="sortable" data-key="turnoverRate">换手率<span class="arrow"></span></th>
+                <th class="sortable" data-key="marketCap">市值<span class="arrow"></span></th>
               </tr>
             </thead>
             <tbody id="losers-body"></tbody>
@@ -489,7 +533,8 @@
     <p class="note">
       数据源：<a href="https://stockanalysis.com/">StockAnalysis</a> 全市场每日快照。由 <code>fetch_snapshot.py</code> 每个交易日抓一次全市场（约 5500+ 只）存入 <code>data/&lt;日期&gt;.json</code>，
       网页只读本地快照、在浏览器里按 Top 数量与最低市值过滤排名。<strong>历史从开始采集那天起逐日积累</strong>，更早的日期没有数据。
-      换手率 = 成交量 ÷ 流通股（StockAnalysis 原生 float 字段）。本页仅供参考，不构成投资建议。
+      用「排序依据」可在涨/跌双榜与单项总榜（成交额/换手率/市值）间切换，点击任意表头也可重排。
+      换手率 = 成交量 ÷ 流通股（StockAnalysis 原生 float；个别 float 异常的股票回退用总股本）。本页仅供参考，不构成投资建议。
     </p>
   </main>
 
@@ -504,6 +549,7 @@
       form: document.getElementById("query-form"),
       topCount: document.getElementById("top-count"),
       minCap: document.getElementById("min-cap"),
+      sortBy: document.getElementById("sort-by"),
       tradeDateInput: document.getElementById("trade-date-input"),
       button: document.getElementById("query-button"),
       status: document.getElementById("status"),
@@ -512,13 +558,30 @@
       maxLoss: document.getElementById("max-loss"),
       capCard: document.getElementById("cap-card"),
       countCard: document.getElementById("count-card"),
+      gainersPanel: document.getElementById("gainers-panel"),
+      losersPanel: document.getElementById("losers-panel"),
       gainersTitle: document.getElementById("gainers-title"),
       losersTitle: document.getElementById("losers-title"),
+      gainersChangeTh: document.getElementById("gainers-change-th"),
       gainersMeta: document.getElementById("gainers-meta"),
       losersMeta: document.getElementById("losers-meta"),
       gainersBody: document.getElementById("gainers-body"),
       losersBody: document.getElementById("losers-body")
     };
+
+    // 列名 → 中文标签，用于榜单标题/说明
+    const COLUMN_LABELS = {
+      change: "涨跌幅",
+      price: "收盘价",
+      dollarVolume: "成交额",
+      turnoverRate: "换手率",
+      marketCap: "市值"
+    };
+
+    // 排序状态：sortKey 当前排序列，sortDir 方向。由下拉框或点击表头改变。
+    let sortKey = "change";
+    let sortDir = "desc";
+    let currentRows = [];   // 当前交易日、已补换手率的全量行（点表头重排时不再重新加载）
 
     function sanitizeTopCount(value) {
       const parsed = Math.floor(Number(value));
@@ -561,11 +624,42 @@
     // 给每一行补上换手率（成交量 / 流通股，沿用 StockAnalysis 原生 float 字段）
     function withTurnover(rows) {
       return rows.map((row) => {
-        const shares = Number(row.float) || Number(row.sharesOut);
+        let shares = Number(row.float);
+        const sharesOut = Number(row.sharesOut);
+        // 个别双重股权股票（如 BRK.B）的 float 字段异常偏小，会算出离谱的换手率；
+        // 若 float 不存在或明显小于总股本的 1%，视为不可信，改用总股本。
+        if (!(shares > 0) || (sharesOut > 0 && shares < sharesOut * 0.01)) {
+          shares = sharesOut;
+        }
         return {
           ...row,
-          turnoverRate: shares ? Number(row.volume) / shares : null
+          turnoverRate: shares > 0 ? Number(row.volume) / shares : null
         };
+      });
+    }
+
+    // 按某列排序（空值/无效值始终排到末尾，不受方向影响）
+    function sortRows(rows, key, dir) {
+      const factor = dir === "asc" ? 1 : -1;
+      return rows.slice().sort((a, b) => {
+        const av = Number(a[key]);
+        const bv = Number(b[key]);
+        const an = !Number.isFinite(av);
+        const bn = !Number.isFinite(bv);
+        if (an && bn) return 0;
+        if (an) return 1;
+        if (bn) return -1;
+        return (av - bv) * factor;
+      });
+    }
+
+    // 更新表头的排序箭头与高亮
+    function updateSortIndicators() {
+      document.querySelectorAll("th.sortable").forEach((th) => {
+        const active = th.dataset.key === sortKey;
+        th.classList.toggle("active", active);
+        const arrow = th.querySelector(".arrow");
+        if (arrow) arrow.textContent = active ? (sortDir === "asc" ? "▲" : "▼") : "";
       });
     }
 
@@ -642,17 +736,11 @@
       els.status.classList.toggle("error", isError);
     }
 
+    // 加载某交易日快照到 currentRows，然后交给 render() 渲染（排序/过滤都在 render 里）
     async function runQuery(event) {
       event?.preventDefault();
-      const topN = sanitizeTopCount(els.topCount.value);
-      const minCapB = sanitizeMinCap(els.minCap.value);
-      const minCapDollars = minCapB * 1_000_000_000;
-      els.topCount.value = topN;
-      els.minCap.value = minCapB;
-
       setLoading(true);
       try {
-        // 确保有日期清单
         if (!availableDates.length) {
           availableDates = await loadManifest();
           if (availableDates.length) {
@@ -661,6 +749,7 @@
           }
         }
         if (!availableDates.length) {
+          currentRows = [];
           renderRows([], els.gainersBody, "暂无任何快照数据。");
           renderRows([], els.losersBody, "暂无任何快照数据。");
           els.tradeDate.textContent = "无数据";
@@ -670,46 +759,25 @@
 
         const latest = availableDates[availableDates.length - 1];
         const selectedTradeDate = els.tradeDateInput.value || latest;
-        const range = `已采集 ${availableDates[0]} ~ ${latest}（${availableDates.length} 天）`;
 
-        updateStatus(`正在查询 Top ${topN}，交易日 ${selectedTradeDate}，最低市值 ${formatCompact(minCapDollars, true)}...`);
-        els.gainersBody.innerHTML = `<tr><td class="empty" colspan="9">正在加载涨幅榜...</td></tr>`;
-        els.losersBody.innerHTML = `<tr><td class="empty" colspan="9">正在加载跌幅榜...</td></tr>`;
+        updateStatus(`正在加载 ${selectedTradeDate} 快照...`);
+        els.gainersBody.innerHTML = `<tr><td class="empty" colspan="9">正在加载...</td></tr>`;
+        els.losersBody.innerHTML = `<tr><td class="empty" colspan="9">正在加载...</td></tr>`;
 
         const raw = await loadDay(selectedTradeDate);
         if (!raw) {
+          currentRows = [];
           renderRows([], els.gainersBody, "该日期没有快照。");
           renderRows([], els.losersBody, "该日期没有快照。");
           els.tradeDate.textContent = "无数据";
-          updateStatus(`交易日 ${selectedTradeDate} 没有快照（可能不是交易日，或当天未采集）。${range}。`, true);
+          updateStatus(`交易日 ${selectedTradeDate} 没有快照（可能不是交易日，或当天未采集）。已采集 ${availableDates[0]} ~ ${latest}。`, true);
           return;
         }
+
         els.tradeDateInput.value = selectedTradeDate;
-
-        const enriched = withTurnover(raw).filter((row) => Number(row.marketCap) >= minCapDollars);
-        const gainers = enriched
-          .filter((row) => Number(row.change) > 0)
-          .sort((a, b) => b.change - a.change)
-          .slice(0, topN);
-        const losers = enriched
-          .filter((row) => Number(row.change) < 0)
-          .sort((a, b) => a.change - b.change)
-          .slice(0, topN);
-
-        renderRows(gainers, els.gainersBody, "没有找到符合条件的上涨股票。");
-        renderRows(losers, els.losersBody, "没有找到符合条件的下跌股票。");
-
         els.tradeDate.textContent = selectedTradeDate;
-        els.gainersTitle.textContent = `涨幅榜 Top ${topN}`;
-        els.losersTitle.textContent = `跌幅榜 Top ${topN}`;
-        els.gainersMeta.textContent = `显示 ${gainers.length} 条，市值 >= ${formatCompact(minCapDollars, true)}。`;
-        els.losersMeta.textContent = `显示 ${losers.length} 条，市值 >= ${formatCompact(minCapDollars, true)}。`;
-        els.maxGain.textContent = gainers[0] ? `+${Number(gainers[0].change).toFixed(2)}%` : "-";
-        els.maxLoss.textContent = losers[0] ? `${Number(losers[0].change).toFixed(2)}%` : "-";
-        els.capCard.textContent = formatCompact(minCapDollars, true);
-        els.countCard.textContent = `${gainers.length + losers.length} 只`;
-
-        updateStatus(`查询完成：交易日 ${selectedTradeDate}，全市场 ${raw.length} 只，涨幅 ${gainers.length} 条，跌幅 ${losers.length} 条。${range}。`);
+        currentRows = withTurnover(raw);
+        render();
       } catch (error) {
         console.error(error);
         updateStatus(`查询失败：${error.message || error}`, true);
@@ -718,6 +786,80 @@
         setLoading(false);
       }
     }
+
+    // 根据当前控件（Top/市值/排序依据/表头点击）从 currentRows 渲染榜单——不重新加载数据
+    function render() {
+      if (!currentRows.length) return;
+      const topN = sanitizeTopCount(els.topCount.value);
+      const minCapB = sanitizeMinCap(els.minCap.value);
+      const minCapDollars = minCapB * 1_000_000_000;
+      els.topCount.value = topN;
+      els.minCap.value = minCapB;
+
+      const mode = els.sortBy.value;           // change=涨跌双榜，其它=单总榜
+      const twoBoard = mode === "change";
+      const pool = currentRows.filter((row) => Number(row.marketCap) >= minCapDollars);
+      const sortLabel = COLUMN_LABELS[sortKey] || sortKey;
+      const capText = `市值 >= ${formatCompact(minCapDollars, true)}`;
+
+      // 摘要卡片：始终反映池子里的真实极值，与当前排序方式无关
+      const maxChange = pool.reduce((m, r) => Math.max(m, Number(r.change)), -Infinity);
+      const minChange = pool.reduce((m, r) => Math.min(m, Number(r.change)), Infinity);
+      els.maxGain.textContent = Number.isFinite(maxChange) && maxChange > 0 ? `+${maxChange.toFixed(2)}%` : "-";
+      els.maxLoss.textContent = Number.isFinite(minChange) && minChange < 0 ? `${minChange.toFixed(2)}%` : "-";
+      els.capCard.textContent = formatCompact(minCapDollars, true);
+
+      let shown = 0;
+      if (twoBoard) {
+        els.losersPanel.style.display = "";
+        els.gainersChangeTh.firstChild.textContent = "涨幅";
+        const gainers = sortRows(pool.filter((r) => Number(r.change) > 0), sortKey, sortDir).slice(0, topN);
+        // 跌幅榜：按涨跌幅排序时用相反方向（最大跌幅在前）；按其它列排序时与涨幅榜同方向
+        const loserDir = sortKey === "change" ? (sortDir === "asc" ? "desc" : "asc") : sortDir;
+        const losers = sortRows(pool.filter((r) => Number(r.change) < 0), sortKey, loserDir).slice(0, topN);
+        renderRows(gainers, els.gainersBody, "没有找到符合条件的上涨股票。");
+        renderRows(losers, els.losersBody, "没有找到符合条件的下跌股票。");
+        els.gainersTitle.textContent = `涨幅榜 Top ${topN}`;
+        els.losersTitle.textContent = `跌幅榜 Top ${topN}`;
+        els.gainersMeta.textContent = `显示 ${gainers.length} 条，按${sortLabel}排序，${capText}。`;
+        els.losersMeta.textContent = `显示 ${losers.length} 条，按${sortLabel}排序，${capText}。`;
+        shown = gainers.length + losers.length;
+      } else {
+        els.losersPanel.style.display = "none";
+        els.gainersChangeTh.firstChild.textContent = "涨跌幅";
+        const list = sortRows(pool, sortKey, sortDir).slice(0, topN);
+        renderRows(list, els.gainersBody, "没有找到符合条件的股票。");
+        els.gainersTitle.textContent = `${sortLabel}榜 Top ${topN}`;
+        els.gainersMeta.textContent = `全市场按${sortLabel}${sortDir === "asc" ? "升序" : "降序"}排序，显示 ${list.length} 条，${capText}。`;
+        shown = list.length;
+      }
+      els.countCard.textContent = `${shown} 只`;
+      updateSortIndicators();
+
+      const latest = availableDates[availableDates.length - 1];
+      updateStatus(`交易日 ${els.tradeDate.textContent}，全市场 ${currentRows.length} 只，当前按${sortLabel}${sortDir === "asc" ? "升序" : "降序"}，显示 ${shown} 条。已采集 ${availableDates[0]} ~ ${latest}（${availableDates.length} 天）。`);
+    }
+
+    // 排序依据下拉：切换视图模式（涨跌双榜 / 单总榜）并把主排序重置为该列、降序
+    els.sortBy.addEventListener("change", () => {
+      sortKey = els.sortBy.value;
+      sortDir = "desc";
+      render();
+    });
+
+    // 点击表头：切换排序列/方向（视图模式仍由下拉框决定）
+    document.querySelectorAll("th.sortable").forEach((th) => {
+      th.addEventListener("click", () => {
+        const key = th.dataset.key;
+        if (sortKey === key) {
+          sortDir = sortDir === "asc" ? "desc" : "asc";
+        } else {
+          sortKey = key;
+          sortDir = "desc";
+        }
+        render();
+      });
+    });
 
     els.form.addEventListener("submit", runQuery);
     runQuery();
