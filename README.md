@@ -33,10 +33,12 @@ python3 fetch_snapshot.py
 
 ## 部署到 GitHub（云端自动 + 在线访问）
 1. 把本目录推到一个 GitHub 仓库。
-2. **Settings → Pages**：Source 选 `Deploy from a branch`，分支选 `main`、目录 `/ (root)`，保存。
+2. **Settings → Pages**：Source 选 **`GitHub Actions`**（不是 `Deploy from a branch`）。
+   这样每次工作流跑完都会**显式部署**，不再依赖 GitHub 偶发的隐式构建（那会漏部署）。
 3. **Settings → Actions → General → Workflow permissions**：选 `Read and write permissions`（让定时任务能提交数据）。
-4. 之后 `.github/workflows/daily.yml` 会在每个交易日（22:30 UTC，美股收盘后）自动抓取并提交；
-   也可在 **Actions** 页点 `Daily market snapshot → Run workflow` 手动触发一次。
+4. 之后 `.github/workflows/daily.yml` 会在每个交易日（22:30 UTC，美股收盘后）自动抓取数据、提交，并**紧接着部署 Pages**；
+   也可在 **Actions** 页点 `Daily snapshot & deploy → Run workflow` 手动触发一次。
+   （另外，凡是改了 `index.html` 等网页文件并 push 到 `main`，也会自动重新部署，无需重新抓数据。）
 5. 访问 `https://<用户名>.github.io/<仓库名>/`（首页就是 `index.html`）。
 
 ## 数据列说明

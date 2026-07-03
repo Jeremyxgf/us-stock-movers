@@ -1,36 +1,47 @@
-name: Daily market snapshot
+name: Daily snapshot & deploy
 
 on:
   schedule:
     # 22:30 UTC，周一至周五 —— 美股收盘（20:00/21:00 UTC）后约 1.5-2.5 小时，
     # 此时 StockAnalysis 的“最近交易日”已结算为当天。GitHub 定时任务可能延迟几分钟，无妨。
     - cron: "30 22 * * 1-5"
-  workflow_dispatch: {}   # 也可在 Actions 页手动触发
+  workflow_dispatch: {}          # 也可在 Actions 页手动触发
+  push:
+    branches: [main]
+    paths-ignore:
+      - "data/**"                # 数据由本工作流自身提交；改网页(index.html)等才需重新部署
 
-# 允许工作流把抓到的数据提交回仓库
+# contents: 提交每日数据；pages + id-token: 部署 GitHub Pages（Source = GitHub Actions）
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
+# 同一时刻只跑一个部署，且不打断进行中的部署
 concurrency:
-  group: daily-snapshot
+  group: pages
   cancel-in-progress: false
 
 jobs:
-  snapshot:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 只有定时/手动触发才抓数据；因编辑网页而 push 时跳过，直接重新部署当前内容
       - name: Set up Python
+        if: github.event_name != 'push'
         uses: actions/setup-python@v5
         with:
           python-version: "3.x"
 
       - name: Fetch snapshot
+        if: github.event_name != 'push'
         run: python3 fetch_snapshot.py
 
       - name: Commit data if changed
+        if: github.event_name != 'push'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -41,3 +52,29 @@ jobs:
             git commit -m "data: snapshot $(date -u +%F)"
             git push
           fi
+
+      # 组装要发布的静态站点（只含网页与数据，不带 .git，体积小、部署快）
+      - name: Assemble site
+        run: |
+          mkdir -p _site
+          cp index.html _site/
+          cp -r data _site/
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
