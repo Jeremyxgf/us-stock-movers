@@ -244,7 +244,7 @@
 
     table {
       width: 100%;
-      min-width: 1120px;
+      min-width: 980px;
       border-collapse: collapse;
       font-size: 14px;
     }
@@ -315,37 +315,6 @@
     .gain,
     .loss {
       font-weight: 750;
-    }
-
-    .barcell {
-      min-width: 180px;
-    }
-
-    .bar {
-      display: grid;
-      grid-template-columns: 1fr;
-      align-items: center;
-    }
-
-    .track {
-      height: 9px;
-      overflow: hidden;
-      border-radius: 999px;
-      background: #e9edf5;
-    }
-
-    .fill {
-      display: block;
-      height: 100%;
-      border-radius: inherit;
-    }
-
-    .bar.gain .fill {
-      background: linear-gradient(90deg, #48c78e, var(--green));
-    }
-
-    .bar.loss .fill {
-      background: linear-gradient(90deg, #e97c6f, var(--red));
     }
 
     tbody tr:hover {
@@ -634,7 +603,6 @@
                 <th class="symbol">代码</th>
                 <th class="name">公司</th>
                 <th class="sortable" id="gainers-change-th" data-key="change">涨幅<span class="arrow"></span></th>
-                <th class="barcell">可视化</th>
                 <th class="spark">近20日</th>
                 <th class="sortable" data-key="price">收盘价<span class="arrow"></span></th>
                 <th class="sortable" data-key="dollarVolume">成交额<span class="arrow"></span></th>
@@ -661,7 +629,6 @@
                 <th class="symbol">代码</th>
                 <th class="name">公司</th>
                 <th class="sortable" data-key="change">跌幅<span class="arrow"></span></th>
-                <th class="barcell">可视化</th>
                 <th class="spark">近20日</th>
                 <th class="sortable" data-key="price">收盘价<span class="arrow"></span></th>
                 <th class="sortable" data-key="dollarVolume">成交额<span class="arrow"></span></th>
@@ -926,16 +893,14 @@
 
     function renderRows(rows, body, emptyText) {
       if (!rows.length) {
-        body.innerHTML = `<tr><td class="empty" colspan="11">${emptyText}</td></tr>`;
+        body.innerHTML = `<tr><td class="empty" colspan="10">${emptyText}</td></tr>`;
         return;
       }
 
-      const max = Math.max(...rows.map((row) => Math.abs(row.change)));
       body.innerHTML = rows.map((row, index) => {
         const type = row.change >= 0 ? "gain" : "loss";
         const sign = row.change > 0 ? "+" : "";
         const changeText = `${sign}${Number(row.change).toFixed(2)}%`;
-        const width = (Math.abs(row.change) / max * 100).toFixed(1);
         const sym = escapeHtml(row.s);
         const name = escapeHtml(row.n);
         const spark = row.sparkCloses && row.sparkCloses.length >= 2
@@ -947,11 +912,6 @@
             <td class="symbol">${sym}</td>
             <td class="name">${name}</td>
             <td class="${type}">${changeText}</td>
-            <td class="barcell">
-              <div class="bar ${type}">
-                <span class="track"><span class="fill" style="width:${width}%"></span></span>
-              </div>
-            </td>
             <td class="spark">${spark}</td>
             <td>${formatPrice(Number(row.price))}</td>
             <td>${formatCompact(Number(row.dollarVolume), true)}</td>
@@ -1000,8 +960,8 @@
         const selectedTradeDate = els.tradeDateInput.value || latest;
 
         updateStatus(`正在加载 ${selectedTradeDate} 快照...`);
-        els.gainersBody.innerHTML = `<tr><td class="empty" colspan="11">正在加载...</td></tr>`;
-        els.losersBody.innerHTML = `<tr><td class="empty" colspan="11">正在加载...</td></tr>`;
+        els.gainersBody.innerHTML = `<tr><td class="empty" colspan="10">正在加载...</td></tr>`;
+        els.losersBody.innerHTML = `<tr><td class="empty" colspan="10">正在加载...</td></tr>`;
 
         const raw = await loadDay(selectedTradeDate);
         if (!raw) {
