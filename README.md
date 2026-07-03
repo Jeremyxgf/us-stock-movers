@@ -15,9 +15,10 @@ StockAnalysis 的接口只返回「最近交易日」，没法查历史。所以
 |---|---|
 | `index.html` | 网页。读 `data/` 下的快照，本地过滤排名。 |
 | `fetch_snapshot.py` | 抓取脚本。翻完全市场（约 5500+ 只）写入 `data/<日期>.json` 并更新 `data/manifest.json`。仅用 Python 标准库。 |
-| `.github/workflows/daily.yml` | GitHub Actions，每个交易日定时跑脚本并自动提交数据。 |
+| `.github/workflows/daily.yml` | GitHub Actions，每个交易日定时跑脚本、提交数据并部署 Pages。 |
 | `data/manifest.json` | 可用交易日清单，网页据此限定可选日期。 |
 | `data/<日期>.json` | 当天全市场快照（对象数组）。 |
+| `data/history.json` | 由脚本预计算：每股近 20 日收盘价（迷你走势图）+ 5/10/30 日年化波动率 + 全市场波动率指数。 |
 
 ## 本地使用
 浏览器有同源限制，直接双击打开 `index.html` 读不到本地 JSON，要起一个静态服务器：
@@ -44,6 +45,19 @@ python3 fetch_snapshot.py
 ## 数据列说明
 代码、公司名、涨跌幅、收盘价、成交额、**换手率（= 成交量 ÷ 流通股 float）**、市值——
 全部来自 StockAnalysis 原生字段，历史每一天都完整。仅供参考，不构成投资建议。
+
+## 迷你走势图 + K 线 + 波动率
+- **近20日迷你走势图**：读 `data/history.json` 里每股近 20 交易日收盘价画内嵌 SVG 折线（涨绿跌红），选历史日期时按该日期截断。
+- **K 线弹窗**：点击迷你走势图，用 [lightweight-charts](https://github.com/tradingview/lightweight-charts)（CDN）按需从 StockAnalysis 的
+  `api/symbol/s/<代码>/history?range=…&period=Daily`（开放 CORS，返回 OHLCV）画完整蜡烛图 + 成交量，可切 1M/6M/1Y/5Y。
+- **波动率**：`fetch_snapshot.py` 预计算，列里显示 0–100「波动率指数」，可排序，悬浮看 5/10/30 日年化%。
+
+### 波动率算法
+- **历史波动率（默认，本项目采用）**：对数日收益 `r_t = ln(P_t / P_{t-1})`，取窗口样本标准差年化：`σ = std(r, N日) × √252`（N=5/10/30）。
+- **波动率指数**：全市场 30 日年化波动率（不足回退 10 日）的横截面百分位（0–100），跨股可比。
+- 这是**已实现/历史**波动（向后看）；真正的 VIX 是**隐含**波动（从期权反推、向前看），需期权链数据，本项目不涉及。
+- 想更精确可扩展：EWMA/RiskMetrics（λ=0.94）、Parkinson / Garman–Klass / Yang–Zhang（需 OHLC）、ATR%、对 SPY 的 Beta。
+- 口径提示：波动率与指数均为**截至最新交易日**，浏览历史排名日时该两列仍显示最新值。
 
 ## 定时任务时间
 `daily.yml` 用 `cron: "30 22 * * 1-5"`（UTC）。美股收盘是 20:00（夏令时）/ 21:00（冬令时）UTC，

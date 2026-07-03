@@ -244,7 +244,7 @@
 
     table {
       width: 100%;
-      min-width: 920px;
+      min-width: 1120px;
       border-collapse: collapse;
       font-size: 14px;
     }
@@ -418,7 +418,143 @@
         text-align: left;
       }
     }
+
+    /* 迷你走势图 */
+    td.spark {
+      width: 132px;
+      padding-top: 6px;
+      padding-bottom: 6px;
+    }
+
+    .spark-btn {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      cursor: pointer;
+      min-height: 0;
+    }
+
+    .spark-btn:hover {
+      background: #eef4ff;
+    }
+
+    .spark-btn svg {
+      display: block;
+    }
+
+    .spark-empty {
+      color: var(--muted);
+    }
+
+    /* 波动率单元格 */
+    td.vol .vol-index {
+      font-weight: 750;
+    }
+
+    /* K 线弹窗 */
+    .modal {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(23, 32, 51, 0.5);
+    }
+
+    .modal.open {
+      display: flex;
+    }
+
+    .modal-card {
+      width: min(920px, 100%);
+      max-height: calc(100vh - 40px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .modal-head .title {
+      font-size: 17px;
+      font-weight: 800;
+    }
+
+    .modal-head .title small {
+      margin-left: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .modal-tools {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .range-btn {
+      min-height: 32px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fbfdff;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .range-btn.active {
+      border-color: var(--blue);
+      background: var(--blue);
+      color: #fff;
+    }
+
+    .modal-close {
+      min-height: 32px;
+      padding: 0 12px;
+      background: #eef1f6;
+      color: var(--ink);
+      font-weight: 750;
+    }
+
+    .modal-body {
+      position: relative;
+      padding: 14px 16px 18px;
+    }
+
+    #chart {
+      width: 100%;
+      height: 360px;
+    }
+
+    .modal-msg {
+      padding: 40px 16px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .modal-msg.error {
+      color: var(--red);
+    }
   </style>
+  <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 <body>
   <main class="wrap">
@@ -448,6 +584,7 @@
           <option value="change">涨跌幅（涨/跌双榜）</option>
           <option value="dollarVolume">成交额（总榜）</option>
           <option value="turnoverRate">换手率（总榜）</option>
+          <option value="volIndex">波动率（总榜）</option>
           <option value="marketCap">市值（总榜）</option>
         </select>
       </label>
@@ -493,9 +630,11 @@
                 <th class="name">公司</th>
                 <th class="sortable" id="gainers-change-th" data-key="change">涨幅<span class="arrow"></span></th>
                 <th class="barcell">可视化</th>
+                <th class="spark">近20日</th>
                 <th class="sortable" data-key="price">收盘价<span class="arrow"></span></th>
                 <th class="sortable" data-key="dollarVolume">成交额<span class="arrow"></span></th>
                 <th class="sortable" data-key="turnoverRate">换手率<span class="arrow"></span></th>
+                <th class="sortable vol" data-key="volIndex">波动率<span class="arrow"></span></th>
                 <th class="sortable" data-key="marketCap">市值<span class="arrow"></span></th>
               </tr>
             </thead>
@@ -518,9 +657,11 @@
                 <th class="name">公司</th>
                 <th class="sortable" data-key="change">跌幅<span class="arrow"></span></th>
                 <th class="barcell">可视化</th>
+                <th class="spark">近20日</th>
                 <th class="sortable" data-key="price">收盘价<span class="arrow"></span></th>
                 <th class="sortable" data-key="dollarVolume">成交额<span class="arrow"></span></th>
                 <th class="sortable" data-key="turnoverRate">换手率<span class="arrow"></span></th>
+                <th class="sortable vol" data-key="volIndex">波动率<span class="arrow"></span></th>
                 <th class="sortable" data-key="marketCap">市值<span class="arrow"></span></th>
               </tr>
             </thead>
@@ -533,10 +674,31 @@
     <p class="note">
       数据源：<a href="https://stockanalysis.com/">StockAnalysis</a> 全市场每日快照。由 <code>fetch_snapshot.py</code> 每个交易日抓一次全市场（约 5500+ 只）存入 <code>data/&lt;日期&gt;.json</code>，
       网页只读本地快照、在浏览器里按 Top 数量与最低市值过滤排名。<strong>历史从开始采集那天起逐日积累</strong>，更早的日期没有数据。
-      用「排序依据」可在涨/跌双榜与单项总榜（成交额/换手率/市值）间切换，点击任意表头也可重排。
-      换手率 = 成交量 ÷ 流通股（StockAnalysis 原生 float；个别 float 异常的股票回退用总股本）。本页仅供参考，不构成投资建议。
+      用「排序依据」可在涨/跌双榜与单项总榜（成交额/换手率/波动率/市值）间切换，点击任意表头也可重排。
+      换手率 = 成交量 ÷ 流通股（StockAnalysis 原生 float；个别 float 异常的股票回退用总股本）。
+      「近20日」为收盘价迷你走势图，<strong>点击可弹出完整 K 线图</strong>（实时 OHLC 来自 StockAnalysis）。
+      「波动率」为对数收益的年化历史波动率（悬浮看 5/10/30 日），其 <strong>0–100 指数是全市场百分位</strong>；波动率/指数均为「截至最新交易日」口径。本页仅供参考，不构成投资建议。
     </p>
   </main>
+
+  <div class="modal" id="chart-modal" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="title" id="chart-title"></div>
+        <div class="modal-tools">
+          <button class="range-btn" type="button" data-range="1M">1M</button>
+          <button class="range-btn active" type="button" data-range="6M">6M</button>
+          <button class="range-btn" type="button" data-range="1Y">1Y</button>
+          <button class="range-btn" type="button" data-range="5Y">5Y</button>
+          <button class="modal-close" id="chart-close" type="button">关闭</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div id="chart"></div>
+        <div class="modal-msg" id="chart-msg" style="display:none"></div>
+      </div>
+    </div>
+  </div>
 
   <script>
     // 网页只读由 fetch_snapshot.py 每日生成的本地快照：
@@ -575,6 +737,7 @@
       price: "收盘价",
       dollarVolume: "成交额",
       turnoverRate: "换手率",
+      volIndex: "波动率",
       marketCap: "市值"
     };
 
@@ -598,6 +761,19 @@
     // ---- 本地快照加载（同源静态文件，浏览器自带 HTTP 缓存，再加一层内存缓存） ----
     const dayCache = new Map();
     let availableDates = [];
+
+    // history.json（迷你走势图 + 波动率），全站只加载一次
+    let historyMeta = null;   // { dates:[...], stocks:{SYM:{c,vol5,vol10,vol30,volIndex}}, asOf }
+    async function loadHistory() {
+      if (historyMeta) return historyMeta;
+      try {
+        const res = await fetch(`${DATA_BASE}/history.json`, { cache: "no-cache" });
+        if (res.ok) historyMeta = await res.json();
+      } catch (e) {
+        console.warn("history.json 加载失败：", e);
+      }
+      return historyMeta;
+    }
 
     async function loadManifest() {
       const res = await fetch(`${DATA_BASE}/manifest.json`, { cache: "no-cache" });
@@ -634,6 +810,29 @@
         return {
           ...row,
           turnoverRate: shares > 0 ? Number(row.volume) / shares : null
+        };
+      });
+    }
+
+    // 把 history.json 的走势/波动率并到当前行；走势按所选日期截断（选历史日不"看未来"）
+    function mergeHistory(rows, selectedDate) {
+      const dates = (historyMeta && historyMeta.dates) || [];
+      const stocks = (historyMeta && historyMeta.stocks) || {};
+      let sliceLen = dates.length;
+      if (selectedDate) {
+        const n = dates.filter((d) => d <= selectedDate).length;
+        if (n > 0) sliceLen = n;
+      }
+      return rows.map((row) => {
+        const e = stocks[row.s];
+        const closes = e ? e.c.slice(0, sliceLen).filter((v) => v != null) : [];
+        return {
+          ...row,
+          sparkCloses: closes,
+          vol5: e ? e.vol5 : null,
+          vol10: e ? e.vol10 : null,
+          vol30: e ? e.vol30 : null,
+          volIndex: e ? e.volIndex : null
         };
       });
     }
@@ -682,6 +881,33 @@
       return `${(Number(value) * 100).toFixed(2)}%`;
     }
 
+    // 迷你走势图（内嵌 SVG 折线）；末值 ≥ 首值绿、否则红
+    function sparklineSVG(closes) {
+      const w = 120, h = 26, pad = 3;
+      if (!closes || closes.length < 2) return `<span class="spark-empty">–</span>`;
+      const min = Math.min(...closes);
+      const max = Math.max(...closes);
+      const span = max - min || 1;
+      const stepX = (w - pad * 2) / (closes.length - 1);
+      const pts = closes.map((c, i) => {
+        const x = pad + i * stepX;
+        const y = pad + (h - pad * 2) * (1 - (c - min) / span);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(" ");
+      const color = closes[closes.length - 1] >= closes[0] ? "var(--green)" : "var(--red)";
+      return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true">`
+        + `<polyline fill="none" stroke="${color}" stroke-width="1.6" `
+        + `stroke-linejoin="round" stroke-linecap="round" points="${pts}"></polyline></svg>`;
+    }
+
+    // 波动率单元格：0-100 指数 + 悬浮显示 5/10/30 日年化%
+    function volCell(row) {
+      if (row.volIndex == null) return `<span class="spark-empty">-</span>`;
+      const pct = (v) => (v == null ? "—" : `${(v * 100).toFixed(0)}%`);
+      const title = `5日 ${pct(row.vol5)} · 10日 ${pct(row.vol10)} · 30日 ${pct(row.vol30)}（年化历史波动率）`;
+      return `<span class="vol-index" title="${title}">${row.volIndex}</span>`;
+    }
+
     function escapeHtml(value) {
       return String(value).replace(/[&<>"']/g, (ch) => ({
         "&": "&amp;",
@@ -694,7 +920,7 @@
 
     function renderRows(rows, body, emptyText) {
       if (!rows.length) {
-        body.innerHTML = `<tr><td class="empty" colspan="9">${emptyText}</td></tr>`;
+        body.innerHTML = `<tr><td class="empty" colspan="11">${emptyText}</td></tr>`;
         return;
       }
 
@@ -704,11 +930,16 @@
         const sign = row.change > 0 ? "+" : "";
         const changeText = `${sign}${Number(row.change).toFixed(2)}%`;
         const width = (Math.abs(row.change) / max * 100).toFixed(1);
+        const sym = escapeHtml(row.s);
+        const name = escapeHtml(row.n);
+        const spark = row.sparkCloses && row.sparkCloses.length >= 2
+          ? `<button type="button" class="spark-btn" data-sym="${sym}" data-name="${name}" title="点击查看 ${sym} K线">${sparklineSVG(row.sparkCloses)}</button>`
+          : `<span class="spark-empty">–</span>`;
         return `
           <tr>
             <td class="rank">${index + 1}</td>
-            <td class="symbol">${escapeHtml(row.s)}</td>
-            <td class="name">${escapeHtml(row.n)}</td>
+            <td class="symbol">${sym}</td>
+            <td class="name">${name}</td>
             <td class="${type}">${changeText}</td>
             <td class="barcell">
               <div class="bar ${type}">
@@ -716,9 +947,11 @@
                 <span>${changeText}</span>
               </div>
             </td>
+            <td class="spark">${spark}</td>
             <td>${formatPrice(Number(row.price))}</td>
             <td>${formatCompact(Number(row.dollarVolume), true)}</td>
             <td>${formatPercent(row.turnoverRate)}</td>
+            <td class="vol">${volCell(row)}</td>
             <td>${row.marketCap == null ? "-" : formatCompact(Number(row.marketCap), true)}</td>
           </tr>
         `;
@@ -748,6 +981,7 @@
             els.tradeDateInput.max = availableDates[availableDates.length - 1];
           }
         }
+        await loadHistory();
         if (!availableDates.length) {
           currentRows = [];
           renderRows([], els.gainersBody, "暂无任何快照数据。");
@@ -761,8 +995,8 @@
         const selectedTradeDate = els.tradeDateInput.value || latest;
 
         updateStatus(`正在加载 ${selectedTradeDate} 快照...`);
-        els.gainersBody.innerHTML = `<tr><td class="empty" colspan="9">正在加载...</td></tr>`;
-        els.losersBody.innerHTML = `<tr><td class="empty" colspan="9">正在加载...</td></tr>`;
+        els.gainersBody.innerHTML = `<tr><td class="empty" colspan="11">正在加载...</td></tr>`;
+        els.losersBody.innerHTML = `<tr><td class="empty" colspan="11">正在加载...</td></tr>`;
 
         const raw = await loadDay(selectedTradeDate);
         if (!raw) {
@@ -776,7 +1010,7 @@
 
         els.tradeDateInput.value = selectedTradeDate;
         els.tradeDate.textContent = selectedTradeDate;
-        currentRows = withTurnover(raw);
+        currentRows = mergeHistory(withTurnover(raw), selectedTradeDate);
         render();
       } catch (error) {
         console.error(error);
@@ -858,6 +1092,143 @@
           sortDir = "desc";
         }
         render();
+      });
+    });
+
+    // ---- K 线弹窗（lightweight-charts；点击迷你走势图打开） ----
+    const chartModal = document.getElementById("chart-modal");
+    const chartTitle = document.getElementById("chart-title");
+    const chartMsg = document.getElementById("chart-msg");
+    const chartEl = document.getElementById("chart");
+    let chart = null, candleSeries = null, volSeries = null;
+    let chartSym = null, chartName = "", chartRange = "6M";
+    const ohlcCache = new Map();   // key: SYM|RANGE -> 升序 OHLC 数组
+
+    function chartLibReady() {
+      return typeof LightweightCharts !== "undefined" && LightweightCharts.createChart;
+    }
+
+    function ensureChart() {
+      if (chart || !chartLibReady()) return;
+      chart = LightweightCharts.createChart(chartEl, {
+        width: chartEl.clientWidth,
+        height: 360,
+        layout: { background: { color: "#ffffff" }, textColor: "#637083" },
+        grid: { vertLines: { color: "#eef1f6" }, horzLines: { color: "#eef1f6" } },
+        rightPriceScale: { borderColor: "#dfe5ee" },
+        timeScale: { borderColor: "#dfe5ee" }
+      });
+      candleSeries = chart.addCandlestickSeries({
+        upColor: "#087443", downColor: "#b42318",
+        wickUpColor: "#087443", wickDownColor: "#b42318", borderVisible: false
+      });
+      volSeries = chart.addHistogramSeries({ priceFormat: { type: "volume" }, priceScaleId: "vol" });
+      chart.priceScale("vol").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+    }
+
+    async function fetchOHLC(sym, range) {
+      const key = `${sym}|${range}`;
+      if (ohlcCache.has(key)) return ohlcCache.get(key);
+      const tryFetch = async (s) => {
+        const url = `https://stockanalysis.com/api/symbol/s/${encodeURIComponent(s)}/history?range=${range}&period=Daily`;
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        const json = await res.json();
+        return (json && json.data) || null;
+      };
+      let data = await tryFetch(sym);
+      if (!data && sym.includes(".")) data = await tryFetch(sym.replace(/\./g, "-"));
+      const rows = (data || [])
+        .filter((d) => d && d.t && d.o != null && d.h != null && d.l != null && d.c != null)
+        .map((d) => ({ time: d.t, open: +d.o, high: +d.h, low: +d.l, close: +d.c, volume: +d.v }))
+        .sort((a, b) => (a.time < b.time ? -1 : 1));
+      ohlcCache.set(key, rows);
+      return rows;
+    }
+
+    function showChartMsg(text, isError) {
+      chartMsg.textContent = text || "";
+      chartMsg.className = "modal-msg" + (isError ? " error" : "");
+      chartMsg.style.display = text ? "" : "none";
+      chartEl.style.display = text ? "none" : "";
+    }
+
+    // CDN 图表库不可用时，用 OHLC 收盘价画一条 SVG 折线兜底
+    function renderFallback(rows) {
+      const w = chartEl.clientWidth || 800, h = 360, pad = 24;
+      const closes = rows.map((d) => d.close);
+      const min = Math.min(...closes), max = Math.max(...closes), span = max - min || 1;
+      const stepX = (w - pad * 2) / (closes.length - 1);
+      const pts = closes.map((c, i) =>
+        `${(pad + i * stepX).toFixed(1)},${(pad + (h - pad * 2) * (1 - (c - min) / span)).toFixed(1)}`).join(" ");
+      const color = closes[closes.length - 1] >= closes[0] ? "#087443" : "#b42318";
+      chartEl.innerHTML = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
+        + `<polyline fill="none" stroke="${color}" stroke-width="2" points="${pts}"></polyline></svg>`
+        + `<div class="note" style="margin-top:6px">图表库未加载，已降级为收盘价折线。</div>`;
+      showChartMsg("", false);
+    }
+
+    async function loadChart() {
+      showChartMsg("正在加载 K 线…", false);
+      try {
+        const rows = await fetchOHLC(chartSym, chartRange);
+        if (!rows.length) {
+          showChartMsg(`暂无 ${chartSym} 的 K 线数据。`, true);
+          return;
+        }
+        if (!chartLibReady()) { renderFallback(rows); return; }
+        ensureChart();
+        candleSeries.setData(rows.map(({ time, open, high, low, close }) => ({ time, open, high, low, close })));
+        volSeries.setData(rows.map((d) => ({
+          time: d.time, value: d.volume,
+          color: d.close >= d.open ? "rgba(8,116,67,0.4)" : "rgba(180,35,24,0.4)"
+        })));
+        chart.applyOptions({ width: chartEl.clientWidth });
+        chart.timeScale().fitContent();
+        showChartMsg("", false);
+      } catch (e) {
+        console.error(e);
+        showChartMsg(`加载失败：${e.message || e}`, true);
+      }
+    }
+
+    function openChart(sym, name) {
+      chartSym = sym;
+      chartName = name || "";
+      chartRange = "6M";
+      chartTitle.innerHTML = `${escapeHtml(sym)} <small>${escapeHtml(chartName)}</small>`;
+      document.querySelectorAll(".range-btn").forEach((b) => b.classList.toggle("active", b.dataset.range === chartRange));
+      chartModal.classList.add("open");
+      chartModal.setAttribute("aria-hidden", "false");
+      loadChart();
+    }
+
+    function closeChart() {
+      chartModal.classList.remove("open");
+      chartModal.setAttribute("aria-hidden", "true");
+    }
+
+    document.getElementById("chart-close").addEventListener("click", closeChart);
+    chartModal.addEventListener("click", (e) => { if (e.target === chartModal) closeChart(); });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && chartModal.classList.contains("open")) closeChart();
+    });
+    document.querySelectorAll(".range-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        chartRange = btn.dataset.range;
+        document.querySelectorAll(".range-btn").forEach((b) => b.classList.toggle("active", b === btn));
+        loadChart();
+      });
+    });
+    window.addEventListener("resize", () => {
+      if (chart && chartModal.classList.contains("open")) chart.applyOptions({ width: chartEl.clientWidth });
+    });
+
+    // 迷你走势图点击 → 打开 K 线（事件委托，行会重渲染）
+    [els.gainersBody, els.losersBody].forEach((body) => {
+      body.addEventListener("click", (e) => {
+        const btn = e.target.closest(".spark-btn");
+        if (btn) openChart(btn.dataset.sym, btn.dataset.name);
       });
     });
 
