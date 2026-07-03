@@ -40,6 +40,10 @@ jobs:
         if: github.event_name != 'push'
         run: python3 fetch_snapshot.py
 
+      - name: Fetch intraday volatility
+        if: github.event_name != 'push'
+        run: python3 fetch_intraday.py
+
       - name: Commit data if changed
         if: github.event_name != 'push'
         run: |
@@ -58,6 +62,7 @@ jobs:
         run: |
           mkdir -p _site
           cp index.html _site/
+          cp intraday.html _site/
           cp -r data _site/
 
       - name: Setup Pages

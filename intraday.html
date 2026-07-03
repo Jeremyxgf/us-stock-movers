@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>美股日内波动率排名</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fb; --panel: #ffffff; --ink: #172033; --muted: #637083;
+      --line: #dfe5ee; --red: #b42318; --green: #087443; --blue: #2457a6;
+      --shadow: 0 18px 48px rgba(23, 32, 51, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: linear-gradient(135deg, rgba(36,87,166,0.08), transparent 34%), var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.5;
+    }
+    .wrap { width: min(1100px, calc(100% - 32px)); margin: 0 auto; padding: 32px 0 40px; }
+    header { display: grid; gap: 12px; grid-template-columns: 1fr auto; align-items: end; margin-bottom: 18px; }
+    h1 { margin: 0 0 8px; font-size: clamp(28px, 4vw, 46px); line-height: 1.06; }
+    .subtitle { margin: 0; color: var(--muted); font-size: 15px; }
+    .backlink { color: var(--blue); text-decoration: none; font-weight: 700; font-size: 14px; white-space: nowrap; }
+    .backlink:hover { text-decoration: underline; }
+    .controls {
+      display: grid; grid-template-columns: 1fr 1fr auto; gap: 14px; align-items: end;
+      margin: 0 0 14px; padding: 16px; border: 1px solid var(--line); border-radius: 8px;
+      background: var(--panel); box-shadow: var(--shadow);
+    }
+    label { display: grid; gap: 6px; color: var(--muted); font-size: 13px; font-weight: 650; }
+    input, select {
+      width: 100%; min-height: 42px; border: 1px solid var(--line); border-radius: 8px;
+      padding: 9px 11px; color: var(--ink); font: inherit; font-size: 15px; background: #fbfdff;
+    }
+    input:focus, select:focus { border-color: var(--blue); outline: 3px solid rgba(36,87,166,0.16); }
+    .stamp { display: inline-flex; flex-direction: column; gap: 3px; padding: 12px 14px; border: 1px solid var(--line);
+      border-radius: 8px; background: rgba(255,255,255,0.78); box-shadow: var(--shadow); text-align: right; }
+    .stamp b { font-size: 16px; } .stamp span { color: var(--muted); font-size: 12px; }
+    .status { min-height: 20px; margin: -2px 2px 14px; color: var(--muted); font-size: 13px; }
+    .status.error { color: var(--red); font-weight: 650; }
+    .table-panel { overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); }
+    .table-head { display: flex; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--line); }
+    .table-head strong { font-size: 17px; } .table-head span { color: var(--muted); font-size: 13px; text-align: right; }
+    .scroll { overflow-x: auto; }
+    table { width: 100%; min-width: 820px; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+    th { position: sticky; top: 0; z-index: 1; background: #f9fbfe; color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; }
+    th.sortable { cursor: pointer; user-select: none; }
+    th.sortable:hover { color: var(--ink); } th.sortable.active { color: var(--blue); }
+    th .arrow { margin-left: 4px; font-size: 10px; }
+    td.rank, th.rank { width: 56px; text-align: center; }
+    td.symbol, th.symbol, td.name, th.name { text-align: left; }
+    td.symbol { color: var(--blue); font-weight: 800; }
+    td.name { max-width: 300px; overflow: hidden; color: #30394b; text-overflow: ellipsis; }
+    td.iv { font-weight: 750; }
+    td.spark { width: 132px; }
+    .spark-empty { color: var(--muted); }
+    tbody tr:hover { background: #f8fbff; }
+    tbody tr:last-child td { border-bottom: 0; }
+    .empty { color: var(--muted); text-align: center; }
+    .note { margin: 14px 2px 0; color: var(--muted); font-size: 13px; }
+    .note a { color: var(--blue); text-decoration: none; font-weight: 650; }
+    @media (max-width: 760px) { header, .controls { grid-template-columns: 1fr; } .stamp { text-align: left; } }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <div>
+        <h1>美股日内波动率排名</h1>
+        <p class="subtitle">基于分钟数据的日内已实现波动率，按 1日 / 5日 / 1月平均排名。<a class="backlink" href="./index.html">← 返回涨跌幅榜单</a></p>
+      </div>
+      <div class="stamp" aria-label="数据状态">
+        <b id="as-of">加载中…</b>
+        <span id="source-label">Yahoo 5 分钟 K 线（每日快照）</span>
+      </div>
+    </header>
+
+    <form class="controls" id="query-form">
+      <label>
+        Top 数量
+        <input id="top-count" type="number" min="1" max="500" step="1" value="50" inputmode="numeric">
+      </label>
+      <label>
+        排序依据
+        <select id="sort-by">
+          <option value="iv1d">近1日日内波动率</option>
+          <option value="iv5d">近5日平均</option>
+          <option value="iv1m" selected>近1月平均</option>
+        </select>
+      </label>
+      <button type="submit" style="min-height:42px;border:0;border-radius:8px;padding:0 18px;background:var(--blue);color:#fff;font:inherit;font-weight:750;cursor:pointer">刷新</button>
+    </form>
+    <div class="status" id="status">准备加载。</div>
+
+    <section class="table-panel" aria-label="日内波动率榜">
+      <div class="table-head">
+        <strong id="title">日内波动率榜</strong>
+        <span id="meta">等待加载。</span>
+      </div>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th class="rank">排名</th>
+              <th class="symbol">代码</th>
+              <th class="name">公司</th>
+              <th class="sortable" data-key="price">收盘价<span class="arrow"></span></th>
+              <th class="sortable" data-key="iv1d">近1日<span class="arrow"></span></th>
+              <th class="sortable" data-key="iv5d">近5日均<span class="arrow"></span></th>
+              <th class="sortable" data-key="iv1m">近1月均<span class="arrow"></span></th>
+              <th class="spark">近一月走势</th>
+            </tr>
+          </thead>
+          <tbody id="body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <p class="note">
+      「日内波动率」= 当天分钟级<strong>已实现波动率</strong> RV = √(Σ 5分钟对数收益²)，以日 % 表示（≈ 当天日内典型波动幅度）。
+      近5日/近1月为按交易日的平均。数据源：<a href="https://finance.yahoo.com/">Yahoo Finance</a> 5 分钟 K 线，每个交易日收盘后由
+      <code>fetch_intraday.py</code> 抓一次并存 <code>data/intraday.json</code>。股票池为按成交额取的最活跃约 500 只（非全市场）。本页仅供参考，不构成投资建议。
+    </p>
+  </main>
+
+  <script>
+    const DATA_URL = "./data/intraday.json";
+    const els = {
+      form: document.getElementById("query-form"),
+      topCount: document.getElementById("top-count"),
+      sortBy: document.getElementById("sort-by"),
+      status: document.getElementById("status"),
+      asOf: document.getElementById("as-of"),
+      title: document.getElementById("title"),
+      meta: document.getElementById("meta"),
+      body: document.getElementById("body"),
+    };
+    const LABELS = { price: "收盘价", iv1d: "近1日日内波动率", iv5d: "近5日平均", iv1m: "近1月平均" };
+    let sortKey = "iv1m", sortDir = "desc";
+    let rows = [];
+
+    function sanitizeTop(v) { const n = Math.floor(Number(v)); return Number.isFinite(n) ? Math.min(500, Math.max(1, n)) : 50; }
+    function escapeHtml(v) { return String(v).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
+    function formatPrice(v) { return v == null ? "-" : (v < 1 ? `$${(+v).toFixed(4)}` : `$${(+v).toFixed(2)}`); }
+    function pct(v) { return (v == null || !Number.isFinite(+v)) ? "-" : `${(+v).toFixed(2)}%`; }
+
+    // 日内波动率迷你走势（蓝线，仅示形态）
+    function sparklineSVG(series) {
+      const w = 120, h = 26, pad = 3;
+      if (!series || series.length < 2) return `<span class="spark-empty">–</span>`;
+      const min = Math.min(...series), max = Math.max(...series), span = max - min || 1;
+      const step = (w - pad * 2) / (series.length - 1);
+      const pts = series.map((c, i) => `${(pad + i * step).toFixed(1)},${(pad + (h - pad * 2) * (1 - (c - min) / span)).toFixed(1)}`).join(" ");
+      return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><polyline fill="none" stroke="var(--blue)" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" points="${pts}"></polyline></svg>`;
+    }
+
+    function sortRows(list, key, dir) {
+      const f = dir === "asc" ? 1 : -1;
+      return list.slice().sort((a, b) => {
+        const av = Number(a[key]), bv = Number(b[key]);
+        const an = !Number.isFinite(av), bn = !Number.isFinite(bv);
+        if (an && bn) return 0; if (an) return 1; if (bn) return -1;
+        return (av - bv) * f;
+      });
+    }
+
+    function updateIndicators() {
+      document.querySelectorAll("th.sortable").forEach((th) => {
+        const active = th.dataset.key === sortKey;
+        th.classList.toggle("active", active);
+        const arrow = th.querySelector(".arrow");
+        if (arrow) arrow.textContent = active ? (sortDir === "asc" ? "▲" : "▼") : "";
+      });
+    }
+
+    function render() {
+      const topN = sanitizeTop(els.topCount.value);
+      els.topCount.value = topN;
+      const list = sortRows(rows, sortKey, sortDir).slice(0, topN);
+      const label = LABELS[sortKey] || sortKey;
+      if (!list.length) {
+        els.body.innerHTML = `<tr><td class="empty" colspan="8">暂无数据。</td></tr>`;
+      } else {
+        els.body.innerHTML = list.map((r, i) => `
+          <tr>
+            <td class="rank">${i + 1}</td>
+            <td class="symbol">${escapeHtml(r.s)}</td>
+            <td class="name">${escapeHtml(r.n || "")}</td>
+            <td>${formatPrice(r.price)}</td>
+            <td class="iv">${pct(r.iv1d)}</td>
+            <td class="iv">${pct(r.iv5d)}</td>
+            <td class="iv">${pct(r.iv1m)}</td>
+            <td class="spark">${sparklineSVG(r.rv)}</td>
+          </tr>`).join("");
+      }
+      els.title.textContent = `日内波动率榜 · 按${label} Top ${topN}`;
+      els.meta.textContent = `显示 ${list.length} / ${rows.length} 只，按${label}${sortDir === "asc" ? "升序" : "降序"}。`;
+      updateIndicators();
+    }
+
+    async function load() {
+      els.status.textContent = "正在加载 intraday.json…";
+      els.status.classList.remove("error");
+      try {
+        const res = await fetch(DATA_URL, { cache: "no-cache" });
+        if (!res.ok) throw new Error(`加载失败（${res.status}）。是否已运行 fetch_intraday.py？`);
+        const d = await res.json();
+        rows = Object.entries(d.stocks || {}).map(([s, v]) => ({ s, ...v }));
+        els.asOf.textContent = d.asOf || "—";
+        els.status.textContent = `基准交易日 ${d.asOf}，股票池 ${d.universe} 只（Yahoo ${d.interval} K 线）。`;
+        render();
+      } catch (e) {
+        console.error(e);
+        els.status.textContent = `加载失败：${e.message || e}`;
+        els.status.classList.add("error");
+        els.body.innerHTML = `<tr><td class="empty" colspan="8">暂无数据。</td></tr>`;
+      }
+    }
+
+    els.sortBy.addEventListener("change", () => { sortKey = els.sortBy.value; sortDir = "desc"; render(); });
+    document.querySelectorAll("th.sortable").forEach((th) => {
+      th.addEventListener("click", () => {
+        const key = th.dataset.key;
+        if (sortKey === key) sortDir = sortDir === "asc" ? "desc" : "asc";
+        else { sortKey = key; sortDir = "desc"; }
+        if (els.sortBy.querySelector(`option[value="${key}"]`)) els.sortBy.value = key;
+        render();
+      });
+    });
+    els.form.addEventListener("submit", (e) => { e.preventDefault(); render(); });
+    load();
+  </script>
+</body>
+</html>
