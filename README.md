@@ -1,5 +1,7 @@
 # 美股涨跌幅动态榜单（每日快照版）
 
+线上地址：<https://jeremyxgf.github.io/us-stock-movers/>
+
 一个纯静态网页 + 每日抓取脚本。每个交易日把 StockAnalysis 全市场快照存成本地 JSON，
 网页离线读取、在浏览器里按 Top 数量与最低市值排出涨幅榜 / 跌幅榜。
 
