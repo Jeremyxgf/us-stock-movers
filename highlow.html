@@ -100,7 +100,7 @@
       </label>
       <label>
         最低市值（十亿美元 / B，0 = 不限）
-        <input id="min-cap" type="number" min="0" max="10000" step="0.1" value="0" inputmode="decimal">
+        <input id="min-cap" type="number" min="0" max="10000" step="0.1" value="2" inputmode="decimal">
       </label>
       <button type="submit">查询</button>
     </form>
@@ -120,6 +120,7 @@
                 <th class="symbol">代码</th>
                 <th class="name">公司</th>
                 <th class="sortable" data-key="price">收盘价<span class="arrow"></span></th>
+                <th>窗口最低–最高</th>
                 <th class="sortable" data-key="distIntra">距盘中最高<span class="arrow"></span></th>
                 <th class="sortable" data-key="chg">区间涨幅<span class="arrow"></span></th>
                 <th class="sortable" data-key="mc">市值<span class="arrow"></span></th>
@@ -144,6 +145,7 @@
                 <th class="symbol">代码</th>
                 <th class="name">公司</th>
                 <th class="sortable" data-key="price">收盘价<span class="arrow"></span></th>
+                <th>窗口最低–最高</th>
                 <th class="sortable" data-key="distIntra">距盘中最低<span class="arrow"></span></th>
                 <th class="sortable" data-key="chg">区间跌幅<span class="arrow"></span></th>
                 <th class="sortable" data-key="mc">市值<span class="arrow"></span></th>
@@ -158,7 +160,7 @@
 
     <p class="note">
       判定为<strong>严格收盘口径</strong>：今日收盘价 = 所选窗口内（含今日）的最高 / 最低<strong>收盘价</strong>。
-      「距盘中最高/最低」= 今收对窗口内<strong>盘中</strong>极值的距离（收盘新高但盘中曾更高时为负）。
+      「窗口最低–最高」为窗口内的<strong>盘中</strong>价格区间；「距盘中最高/最低」= 今收对该盘中极值的距离（收盘新高但盘中曾更高时为负）。
       「区间涨/跌幅」= 今收对窗口起点前一日收盘的变化，榜单默认按其幅度排序；「窗口走势」画的是窗口内每日收盘。
       股票池为按成交额最活跃约 500 只（与<a href="./intraday.html">日内波动率页</a>一致），价格已按拆股/分红复权；
       上市时间不足所选窗口的股票不参与判定。数据源：<a href="https://stockanalysis.com/">StockAnalysis</a> 日线，每交易日收盘后由
@@ -248,11 +250,12 @@
         const today = c[c.length - 1];
         const base = c[c.length - D - 1];
         const chg = base > 0 ? (today / base - 1) * 100 : null;
-        const common = { s, n: v.n, mc: v.mc, price: today, chg, spark: winC };
+        const winHi = Math.max(...winH), winLo = Math.min(...winL);   // 窗口内盘中极值
+        const common = { s, n: v.n, mc: v.mc, price: today, chg, spark: winC, winHi, winLo };
         if (today >= Math.max(...winC)) {
-          highs.push({ ...common, distIntra: (today / Math.max(...winH) - 1) * 100 });
+          highs.push({ ...common, distIntra: (today / winHi - 1) * 100 });
         } else if (today <= Math.min(...winC)) {
-          lows.push({ ...common, distIntra: (today / Math.min(...winL) - 1) * 100 });
+          lows.push({ ...common, distIntra: (today / winLo - 1) * 100 });
         }
       }
       return { highs, lows };
@@ -260,7 +263,7 @@
 
     function renderRows(list, body, isHigh) {
       if (!list.length) {
-        body.innerHTML = `<tr><td class="empty" colspan="8">该窗口没有符合条件的股票。</td></tr>`;
+        body.innerHTML = `<tr><td class="empty" colspan="9">该窗口没有符合条件的股票。</td></tr>`;
         return;
       }
       body.innerHTML = list.map((r, i) => `
@@ -269,6 +272,7 @@
           <td class="symbol">${escapeHtml(r.s)}</td>
           <td class="name">${escapeHtml(r.n || "")}</td>
           <td>${fmtPrice(r.price)}</td>
+          <td>${fmtPrice(r.winLo)} – ${fmtPrice(r.winHi)}</td>
           <td>${fmtPct(r.distIntra)}</td>
           <td class="${isHigh ? "gain" : "loss"}">${fmtPct(r.chg)}</td>
           <td>${fmtCap(r.mc)}</td>
@@ -312,8 +316,8 @@
         console.error(e);
         els.status.textContent = `加载失败：${e.message || e}`;
         els.status.classList.add("error");
-        els.highBody.innerHTML = `<tr><td class="empty" colspan="8">暂无数据。</td></tr>`;
-        els.lowBody.innerHTML = `<tr><td class="empty" colspan="8">暂无数据。</td></tr>`;
+        els.highBody.innerHTML = `<tr><td class="empty" colspan="9">暂无数据。</td></tr>`;
+        els.lowBody.innerHTML = `<tr><td class="empty" colspan="9">暂无数据。</td></tr>`;
       }
     }
 
