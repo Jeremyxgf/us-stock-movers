@@ -32,7 +32,7 @@
       border-radius: 8px; background: rgba(255,255,255,0.78); box-shadow: var(--shadow); text-align: right; }
     .stamp b { font-size: 16px; } .stamp span { color: var(--muted); font-size: 12px; }
     .controls {
-      display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 14px; align-items: end;
+      display: grid; grid-template-columns: auto 1fr 1fr 1fr auto; gap: 14px; align-items: end;
       margin: 0 0 14px; padding: 16px; border: 1px solid var(--line); border-radius: 8px;
       background: var(--panel); box-shadow: var(--shadow);
     }
@@ -46,6 +46,15 @@
       min-height: 42px; border: 0; border-radius: 8px; padding: 0 18px;
       background: var(--blue); color: #fff; font: inherit; font-weight: 750; cursor: pointer;
     }
+    .seg { display: flex; }
+    .seg-btn {
+      min-height: 42px; padding: 0 18px; border: 1px solid var(--line);
+      background: #fbfdff; color: var(--muted); font-weight: 700; cursor: pointer;
+    }
+    .seg-btn:first-child { border-radius: 8px 0 0 8px; }
+    .seg-btn:last-child { border-radius: 0 8px 8px 0; border-left: 0; }
+    .seg-btn.active-low { border-color: var(--red); background: var(--red); color: #fff; }
+    .seg-btn.active-high { border-color: var(--green); background: var(--green); color: #fff; }
     .status { min-height: 20px; margin: -2px 2px 14px; color: var(--muted); font-size: 13px; }
     .status.error { color: var(--red); font-weight: 650; }
     .tables { display: grid; gap: 22px; }
@@ -91,6 +100,13 @@
 
     <form class="controls" id="query-form">
       <label>
+        榜单
+        <span class="seg">
+          <button type="button" class="seg-btn active-low" id="btn-low">创新低</button>
+          <button type="button" class="seg-btn" id="btn-high">创新高</button>
+        </span>
+      </label>
+      <label>
         窗口（周，1–52，1周 = 5 个交易日）
         <input id="weeks" type="number" min="1" max="52" step="1" value="4" inputmode="numeric">
       </label>
@@ -107,7 +123,7 @@
     <div class="status" id="status">准备加载。</div>
 
     <section class="tables">
-      <section class="table-panel" aria-label="创新高榜">
+      <section class="table-panel" id="high-panel" aria-label="创新高榜" style="display:none">
         <div class="table-head">
           <strong id="high-title">创新高榜</strong>
           <span id="high-meta">等待加载。</span>
@@ -122,7 +138,6 @@
                 <th class="sortable" data-key="price">收盘价<span class="arrow"></span></th>
                 <th>窗口最低–最高</th>
                 <th class="sortable" data-key="distIntra">距盘中最高<span class="arrow"></span></th>
-                <th>起算日</th>
                 <th class="sortable" data-key="chg">区间涨幅<span class="arrow"></span></th>
                 <th class="sortable" data-key="mc">市值<span class="arrow"></span></th>
                 <th class="spark">窗口走势</th>
@@ -133,7 +148,7 @@
         </div>
       </section>
 
-      <section class="table-panel" aria-label="创新低榜">
+      <section class="table-panel" id="low-panel" aria-label="创新低榜">
         <div class="table-head">
           <strong id="low-title">创新低榜</strong>
           <span id="low-meta">等待加载。</span>
@@ -148,7 +163,6 @@
                 <th class="sortable" data-key="price">收盘价<span class="arrow"></span></th>
                 <th>窗口最低–最高</th>
                 <th class="sortable" data-key="distIntra">距盘中最低<span class="arrow"></span></th>
-                <th>起算日</th>
                 <th class="sortable" data-key="chg">区间跌幅<span class="arrow"></span></th>
                 <th class="sortable" data-key="mc">市值<span class="arrow"></span></th>
                 <th class="spark">窗口走势</th>
@@ -185,9 +199,14 @@
       lowMeta: document.getElementById("low-meta"),
       highBody: document.getElementById("high-body"),
       lowBody: document.getElementById("low-body"),
+      highPanel: document.getElementById("high-panel"),
+      lowPanel: document.getElementById("low-panel"),
+      btnLow: document.getElementById("btn-low"),
+      btnHigh: document.getElementById("btn-high"),
     };
     const LABELS = { price: "收盘价", distIntra: "距盘中极值", chg: "区间幅度", mc: "市值" };
     let data = null;
+    let board = "low";                 // 当前榜单：low=创新低（默认） / high=创新高
     let sortKey = "chg", sortDir = "desc";
 
     const clampInt = (v, lo, hi, dflt) => {
@@ -267,7 +286,7 @@
 
     function renderRows(list, body, isHigh) {
       if (!list.length) {
-        body.innerHTML = `<tr><td class="empty" colspan="10">该窗口没有符合条件的股票。</td></tr>`;
+        body.innerHTML = `<tr><td class="empty" colspan="9">该窗口没有符合条件的股票。</td></tr>`;
         return;
       }
       body.innerHTML = list.map((r, i) => `
@@ -278,7 +297,6 @@
           <td>${fmtPrice(r.price)}</td>
           <td>${fmtPrice(r.winLo)} – ${fmtPrice(r.winHi)}</td>
           <td>${fmtPct(r.distIntra)}</td>
-          <td>${escapeHtml(r.baseDate || "-")}</td>
           <td class="${isHigh ? "gain" : "loss"}">${fmtPct(r.chg)}</td>
           <td>${fmtCap(r.mc)}</td>
           <td class="spark">${sparklineSVG(r.spark)}</td>
@@ -293,22 +311,35 @@
       els.weeks.value = weeks; els.topCount.value = topN;
       const { highs, lows } = computeLists(weeks, minCapB * 1e9);
 
-      // 新高榜按 chg 降序（涨幅大在前）、新低榜按 chg 升序（跌幅大在前）；其它列两榜同方向
-      const lowDir = sortKey === "chg" ? (sortDir === "asc" ? "desc" : "asc") : sortDir;
-      const hi = sortRows(highs, sortKey, sortDir).slice(0, topN);
-      const lo = sortRows(lows, sortKey, lowDir).slice(0, topN);
-      renderRows(hi, els.highBody, true);
-      renderRows(lo, els.lowBody, false);
-
-      const label = LABELS[sortKey] || sortKey;
-      els.highTitle.textContent = `创 ${weeks} 周新高 Top ${topN}`;
-      els.lowTitle.textContent = `创 ${weeks} 周新低 Top ${topN}`;
-      els.highMeta.textContent = `共 ${highs.length} 只创新高，显示 ${hi.length} 条，按${label}排序。`;
-      els.lowMeta.textContent = `共 ${lows.length} 只创新低，显示 ${lo.length} 条，按${label}排序。`;
+      // 窗口日期与起算日（同窗口下全市场一致），显示在榜单标题行
       const cal = data.dates || [];
       const D = weeks * 5;
-      const rangeText = cal.length > D ? `${cal[cal.length - D]} → ${cal[cal.length - 1]}，起算日 ${cal[cal.length - D - 1]}，` : "";
-      els.status.textContent = `交易日 ${data.asOf}，股票池 ${Object.keys(data.stocks).length} 只：${weeks} 周（${weeks * 5} 交易日，${rangeText}）窗口内 ${highs.length} 只创新高、${lows.length} 只创新低。`;
+      const rangeText = cal.length > D
+        ? `窗口 ${cal[cal.length - D]} → ${cal[cal.length - 1]} · 起算日 ${cal[cal.length - D - 1]} · `
+        : "";
+      const label = LABELS[sortKey] || sortKey;
+
+      // 按钮态与面板显隐
+      els.btnLow.className = "seg-btn" + (board === "low" ? " active-low" : "");
+      els.btnHigh.className = "seg-btn" + (board === "high" ? " active-high" : "");
+      els.lowPanel.style.display = board === "low" ? "" : "none";
+      els.highPanel.style.display = board === "high" ? "" : "none";
+
+      if (board === "high") {
+        const hi = sortRows(highs, sortKey, sortDir).slice(0, topN);
+        renderRows(hi, els.highBody, true);
+        els.highTitle.textContent = `创 ${weeks} 周新高 Top ${topN}`;
+        els.highMeta.textContent = `${rangeText}共 ${highs.length} 只创新高，显示 ${hi.length} 条，按${label}排序。`;
+      } else {
+        // 新低榜默认跌幅大的在前：chg 列用相反方向
+        const lowDir = sortKey === "chg" ? (sortDir === "asc" ? "desc" : "asc") : sortDir;
+        const lo = sortRows(lows, sortKey, lowDir).slice(0, topN);
+        renderRows(lo, els.lowBody, false);
+        els.lowTitle.textContent = `创 ${weeks} 周新低 Top ${topN}`;
+        els.lowMeta.textContent = `${rangeText}共 ${lows.length} 只创新低，显示 ${lo.length} 条，按${label}排序。`;
+      }
+
+      els.status.textContent = `交易日 ${data.asOf}，股票池 ${Object.keys(data.stocks).length} 只：${weeks} 周（${D} 交易日）窗口内 ${highs.length} 只创新高、${lows.length} 只创新低。`;
       updateIndicators();
     }
 
@@ -324,8 +355,8 @@
         console.error(e);
         els.status.textContent = `加载失败：${e.message || e}`;
         els.status.classList.add("error");
-        els.highBody.innerHTML = `<tr><td class="empty" colspan="10">暂无数据。</td></tr>`;
-        els.lowBody.innerHTML = `<tr><td class="empty" colspan="10">暂无数据。</td></tr>`;
+        els.highBody.innerHTML = `<tr><td class="empty" colspan="9">暂无数据。</td></tr>`;
+        els.lowBody.innerHTML = `<tr><td class="empty" colspan="9">暂无数据。</td></tr>`;
       }
     }
 
@@ -337,6 +368,8 @@
         render();
       });
     });
+    els.btnLow.addEventListener("click", () => { board = "low"; render(); });
+    els.btnHigh.addEventListener("click", () => { board = "high"; render(); });
     els.form.addEventListener("submit", (e) => { e.preventDefault(); render(); });
     load();
   </script>
