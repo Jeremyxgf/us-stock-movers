@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>美股板块相关性星系</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1020;
+      --panel: #141a2e;
+      --ink: #e6ebf5;
+      --muted: #8a94ab;
+      --line: #26304a;
+      --red: #ff4d3a;
+      --green: #2ecc8f;
+      --blue: #5b8def;
+      --shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(ellipse at 30% -20%, #1a2340 0%, var(--bg) 55%);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.5;
+    }
+    .wrap { width: min(1280px, calc(100% - 32px)); margin: 0 auto; padding: 26px 0 36px; }
+    header { display: grid; gap: 12px; grid-template-columns: 1fr auto; align-items: end; margin-bottom: 14px; }
+    h1 { margin: 0 0 6px; font-size: clamp(26px, 3.5vw, 40px); line-height: 1.06; }
+    .subtitle { margin: 0; color: var(--muted); font-size: 14px; }
+    .backlink { color: var(--blue); text-decoration: none; font-weight: 700; font-size: 14px; white-space: nowrap; }
+    .backlink:hover { text-decoration: underline; }
+    .stamp { display: inline-flex; flex-direction: column; gap: 3px; padding: 10px 14px; border: 1px solid var(--line);
+      border-radius: 8px; background: rgba(20,26,46,0.8); box-shadow: var(--shadow); text-align: right; }
+    .stamp b { font-size: 15px; } .stamp span { color: var(--muted); font-size: 12px; }
+    .controls {
+      display: flex; flex-wrap: wrap; gap: 16px; align-items: center;
+      margin: 0 0 12px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 8px;
+      background: var(--panel); box-shadow: var(--shadow); font-size: 13px;
+    }
+    .ctl-label { color: var(--muted); font-weight: 650; margin-right: 2px; }
+    .seg { display: flex; }
+    .seg-btn {
+      min-height: 34px; padding: 0 14px; border: 1px solid var(--line);
+      background: #0f1526; color: var(--muted); font: inherit; font-weight: 700; cursor: pointer;
+    }
+    .seg-btn:first-child { border-radius: 8px 0 0 8px; }
+    .seg-btn:last-child { border-radius: 0 8px 8px 0; border-left: 0; }
+    .seg-btn + .seg-btn:not(:last-child) { border-left: 0; }
+    .seg-btn.active { border-color: var(--blue); background: var(--blue); color: #fff; }
+    input[type="range"] { width: 140px; accent-color: var(--blue); vertical-align: middle; }
+    .thr-val { display: inline-block; min-width: 44px; font-weight: 750; }
+    .status { min-height: 18px; margin: 0 2px 10px; color: var(--muted); font-size: 13px; }
+    .status.error { color: var(--red); font-weight: 650; }
+
+    .stage { display: grid; grid-template-columns: 1fr 300px; gap: 14px; }
+    #graph-panel {
+      position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 10px;
+      background: #070b16; box-shadow: var(--shadow); height: 66vh; min-height: 460px;
+    }
+    #graph { width: 100%; height: 100%; }
+    .aside {
+      display: flex; flex-direction: column; gap: 12px; height: 66vh; min-height: 460px; overflow-y: auto;
+    }
+    .card { padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: var(--shadow); }
+    .card h3 { margin: 0 0 8px; font-size: 14px; }
+    .pair { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; font-size: 13px; border-bottom: 1px dashed var(--line); }
+    .pair:last-child { border-bottom: 0; }
+    .pair .v { font-weight: 800; }
+    .v.pos { color: var(--red); }
+    .v.neg { color: var(--green); }
+    .hint { color: var(--muted); font-size: 12px; }
+    .note { margin: 14px 2px 0; color: var(--muted); font-size: 13px; }
+    .note a { color: var(--blue); text-decoration: none; font-weight: 650; }
+    .note strong { color: var(--ink); }
+    @media (max-width: 900px) {
+      .stage { grid-template-columns: 1fr; }
+      .aside { height: auto; }
+      header { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <div>
+        <h1>板块相关性星系</h1>
+        <p class="subtitle">球 = 板块/行业（大小 ∝ 总市值），连线 = 日收益相关性：<b style="color:var(--red)">越红正相关越强</b>，<b style="color:var(--green)">越绿负相关越强</b>。左键拖球 / 拖背景旋转，滚轮缩放，点球高亮。
+          <a class="backlink" href="./index.html">← 返回涨跌幅榜单</a></p>
+      </div>
+      <div class="stamp" aria-label="数据状态">
+        <b id="as-of">加载中…</b>
+        <span>近一年日线 · 市值加权组合</span>
+      </div>
+    </header>
+
+    <div class="controls">
+      <span>
+        <span class="ctl-label">粒度</span>
+        <span class="seg">
+          <button type="button" class="seg-btn active" data-level="sector">板块（11）</button>
+          <button type="button" class="seg-btn" data-level="industry">行业</button>
+        </span>
+      </span>
+      <span>
+        <span class="ctl-label">窗口</span>
+        <span class="seg" id="win-seg">
+          <button type="button" class="seg-btn" data-win="1M">1M</button>
+          <button type="button" class="seg-btn active" data-win="3M">3M</button>
+          <button type="button" class="seg-btn" data-win="6M">6M</button>
+          <button type="button" class="seg-btn" data-win="1Y">1Y</button>
+        </span>
+      </span>
+      <span>
+        <span class="ctl-label">只画 |相关| ≥</span>
+        <input type="range" id="threshold" min="0" max="0.9" step="0.05" value="0.2">
+        <span class="thr-val" id="thr-val">0.20</span>
+      </span>
+    </div>
+    <div class="status" id="status">正在加载…</div>
+
+    <div class="stage">
+      <div id="graph-panel"><div id="graph"></div></div>
+      <div class="aside">
+        <div class="card" id="pairs-card">
+          <h3>最强相关对</h3>
+          <div id="pairs"></div>
+          <div class="hint" style="margin-top:8px">点击某个球可查看它与其他所有球的相关性。</div>
+        </div>
+        <div class="card" id="focus-card" style="display:none">
+          <h3 id="focus-title"></h3>
+          <div id="focus-list"></div>
+          <div class="hint" style="margin-top:8px">点击图中空白处恢复。</div>
+        </div>
+      </div>
+    </div>
+
+    <p class="note">
+      相关系数为两组<strong>市值加权组合日对数收益</strong>的 Pearson 相关（复权收盘，窗口按交易日 1M=21 / 3M=63 / 6M=126 / 1Y=250）。
+      股票池为按成交额最活跃约 500 只；行业级只统计成分股 ≥5 只的行业。布局为力导向：正相关强的互相靠近、负相关强的互相远离。
+      <strong>为什么有的板块负相关（像对冲）？</strong>常见成因：① 防御（必需消费/公用事业）与成长（科技）之间的 risk-on/off 资金迁移——买科技时卖防御、避险时反向；
+      ② 利率敏感（房地产/公用事业）与高估值成长对利率变动的反应相反；③ 油价、美元等宏观因子的敞口方向相反（能源 vs 消费）。
+      数据每交易日收盘后由 <code>fetch_sectors.py</code> 生成。本页仅供参考，不构成投资建议。
+    </p>
+  </main>
+
+  <script type="module">
+    import ForceGraph3D from "https://cdn.jsdelivr.net/npm/3d-force-graph@1.73.6/+esm";
+    import SpriteText from "https://cdn.jsdelivr.net/npm/three-spritetext@1.8.2/+esm";
+
+    const els = {
+      status: document.getElementById("status"),
+      asOf: document.getElementById("as-of"),
+      graphPanel: document.getElementById("graph-panel"),
+      graphEl: document.getElementById("graph"),
+      threshold: document.getElementById("threshold"),
+      thrVal: document.getElementById("thr-val"),
+      pairs: document.getElementById("pairs"),
+      pairsCard: document.getElementById("pairs-card"),
+      focusCard: document.getElementById("focus-card"),
+      focusTitle: document.getElementById("focus-title"),
+      focusList: document.getElementById("focus-list"),
+    };
+
+    let data = null;
+    let level = "sector";     // sector / industry
+    let win = "3M";           // 1M/3M/6M/1Y
+    let threshold = 0.2;
+    let selected = null;      // 选中的节点 id
+    let graph = null;
+
+    const PALETTE = ["#5b8def","#e8b339","#9d6bff","#38bdf8","#f472b6","#34d399",
+                     "#fb923c","#a3e635","#22d3ee","#c084fc","#facc15","#4ade80",
+                     "#f87171","#818cf8","#2dd4bf","#e879f9","#fbbf24","#93c5fd"];
+
+    const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+    const fmtCap = (v) => v >= 1e12 ? `$${(v/1e12).toFixed(1)}T` : `$${(v/1e9).toFixed(0)}B`;
+    const fmtRho = (v) => `${v > 0 ? "+" : ""}${v.toFixed(2)}`;
+
+    // 相关性 → 颜色：正=灰→红，负=灰→绿；|ρ| 越大越饱和
+    function linkColor(rho, dim) {
+      if (dim) return "rgba(90,100,125,0.06)";
+      const t = Math.min(1, Math.abs(rho) / 0.9);
+      const mix = (a, b) => Math.round(a + (b - a) * t);
+      const base = [110, 118, 138];
+      const target = rho >= 0 ? [255, 45, 26] : [24, 219, 136];
+      const [r, g, b] = [mix(base[0], target[0]), mix(base[1], target[1]), mix(base[2], target[2])];
+      return `rgba(${r},${g},${b},${0.25 + 0.65 * t})`;
+    }
+
+    function currentLevel() { return data[level]; }
+
+    // 组装当前 粒度+窗口+阈值 下的节点与连线
+    function buildGraphData() {
+      const lv = currentLevel();
+      const m = lv.corr[win];
+      const nodes = lv.labels.map((name, i) => {
+        const meta = lv.meta[name];
+        return {
+          id: name,
+          cn: meta.cn || name,
+          count: meta.count,
+          mc: meta.mc,
+          color: PALETTE[i % PALETTE.length],
+          val: Math.max(2, Math.pow(Math.log10(Math.max(meta.mc, 1e9) / 1e9), 1.8)),
+        };
+      });
+      const links = [];
+      for (let i = 0; i < lv.labels.length; i++) {
+        for (let j = i + 1; j < lv.labels.length; j++) {
+          const rho = m[i][j];
+          if (rho == null || Math.abs(rho) < threshold) continue;
+          links.push({ source: lv.labels[i], target: lv.labels[j], rho });
+        }
+      }
+      return { nodes, links };
+    }
+
+    function allPairs() {
+      const lv = currentLevel();
+      const m = lv.corr[win];
+      const out = [];
+      for (let i = 0; i < lv.labels.length; i++)
+        for (let j = i + 1; j < lv.labels.length; j++)
+          if (m[i][j] != null) out.push({ a: lv.labels[i], b: lv.labels[j], rho: m[i][j] });
+      return out;
+    }
+
+    const cnOf = (name) => (currentLevel().meta[name] || {}).cn || name;
+
+    function pairRow(p) {
+      const cls = p.rho >= 0 ? "pos" : "neg";
+      return `<div class="pair"><span>${esc(cnOf(p.a))} ↔ ${esc(cnOf(p.b))}</span><span class="v ${cls}">${fmtRho(p.rho)}</span></div>`;
+    }
+
+    function renderPairs() {
+      const pairs = allPairs().sort((x, y) => y.rho - x.rho);
+      const top = pairs.slice(0, 5);
+      const bottom = pairs.slice(-5).reverse();
+      els.pairs.innerHTML =
+        `<div class="hint" style="margin-bottom:4px">最强正相关（同涨同跌）</div>` + top.map(pairRow).join("") +
+        `<div class="hint" style="margin:10px 0 4px">最强负相关（此涨彼跌）</div>` + bottom.map(pairRow).join("");
+    }
+
+    function renderFocus() {
+      if (!selected) { els.focusCard.style.display = "none"; return; }
+      const rows = allPairs()
+        .filter((p) => p.a === selected || p.b === selected)
+        .map((p) => ({ other: p.a === selected ? p.b : p.a, rho: p.rho }))
+        .sort((x, y) => y.rho - x.rho);
+      els.focusTitle.textContent = `${cnOf(selected)} 与其他${level === "sector" ? "板块" : "行业"}`;
+      els.focusList.innerHTML = rows.map((r) => {
+        const cls = r.rho >= 0 ? "pos" : "neg";
+        return `<div class="pair"><span>${esc(cnOf(r.other))}</span><span class="v ${cls}">${fmtRho(r.rho)}</span></div>`;
+      }).join("");
+      els.focusCard.style.display = "";
+    }
+
+    function touchesSelected(l) {
+      if (!selected) return true;
+      const s = typeof l.source === "object" ? l.source.id : l.source;
+      const t = typeof l.target === "object" ? l.target.id : l.target;
+      return s === selected || t === selected;
+    }
+
+    function initGraph() {
+      graph = ForceGraph3D()(els.graphEl)
+        .width(els.graphPanel.clientWidth)
+        .height(els.graphPanel.clientHeight)
+        .backgroundColor("#070b16")
+        .showNavInfo(false)
+        .nodeVal((n) => n.val)
+        .nodeColor((n) => n.color)
+        .nodeOpacity(0.92)
+        .nodeThreeObjectExtend(true)
+        .nodeThreeObject((n) => {
+          const s = new SpriteText(n.cn);
+          s.color = "#dfe6f5";
+          s.textHeight = level === "sector" ? 5.5 : 3.6;
+          s.position.y = -(4 * Math.cbrt(n.val) + 7);
+          return s;
+        })
+        .nodeLabel((n) => `<div style="text-align:center"><b>${esc(n.cn)}</b><br>${esc(n.id)}<br>成分股 ${n.count} 只 · ${fmtCap(n.mc)}</div>`)
+        .linkColor((l) => linkColor(l.rho, !touchesSelected(l)))
+        .linkWidth((l) => touchesSelected(l) ? Math.abs(l.rho) * 4 : 0.2)
+        .linkOpacity(0.85)
+        .linkLabel((l) => {
+          const s = typeof l.source === "object" ? l.source.id : l.source;
+          const t = typeof l.target === "object" ? l.target.id : l.target;
+          return `${esc(cnOf(s))} ↔ ${esc(cnOf(t))}：<b>${fmtRho(l.rho)}</b>`;
+        })
+        .onNodeClick((n) => { selected = selected === n.id ? null : n.id; refreshStyles(); renderFocus(); })
+        .onBackgroundClick(() => { selected = null; refreshStyles(); renderFocus(); });
+
+      // 力导向：正相关越强距离越近，负相关越强推得越远
+      graph.d3Force("link").distance((l) => 60 + (1 - l.rho) * 90);
+      graph.d3Force("charge").strength(-160);
+    }
+
+    function refreshStyles() {
+      // 重设 accessor 触发连线颜色/宽度重绘
+      graph.linkColor(graph.linkColor()).linkWidth(graph.linkWidth());
+    }
+
+    function rebuild() {
+      selected = null;
+      const gd = buildGraphData();
+      graph.graphData(gd);
+      graph.d3Force("link").distance((l) => 60 + (1 - l.rho) * 90);
+      // 粒度切换时球标字号不同，重设 nodeThreeObject
+      graph.nodeThreeObject(graph.nodeThreeObject());
+      renderPairs();
+      renderFocus();
+      const lv = currentLevel();
+      els.status.textContent = `交易日 ${data.asOf} · ${level === "sector" ? "板块" : "行业"} ${lv.labels.length} 个 · 窗口 ${win} · 显示 ${gd.links.length} 条连线（|ρ| ≥ ${threshold.toFixed(2)}）。`;
+    }
+
+    // ---- 控件 ----
+    document.querySelectorAll(".seg-btn[data-level]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        level = btn.dataset.level;
+        document.querySelectorAll(".seg-btn[data-level]").forEach((b) => b.classList.toggle("active", b === btn));
+        if (level === "industry" && threshold < 0.4) {
+          threshold = 0.4;               // 行业级连线多，自动抬高阈值防毛线球
+          els.threshold.value = "0.4";
+          els.thrVal.textContent = "0.40";
+        }
+        rebuild();
+      });
+    });
+    document.querySelectorAll(".seg-btn[data-win]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        win = btn.dataset.win;
+        document.querySelectorAll(".seg-btn[data-win]").forEach((b) => b.classList.toggle("active", b === btn));
+        rebuild();
+      });
+    });
+    els.threshold.addEventListener("input", () => {
+      threshold = Number(els.threshold.value);
+      els.thrVal.textContent = threshold.toFixed(2);
+      rebuild();
+    });
+    window.addEventListener("resize", () => {
+      if (graph) graph.width(els.graphPanel.clientWidth).height(els.graphPanel.clientHeight);
+    });
+
+    // ---- 启动 ----
+    (async () => {
+      try {
+        const res = await fetch("./data/sectors.json", { cache: "no-cache" });
+        if (!res.ok) throw new Error(`加载 sectors.json 失败（${res.status}）。是否已运行 fetch_sectors.py？`);
+        data = await res.json();
+        els.asOf.textContent = data.asOf || "—";
+        initGraph();
+        rebuild();
+      } catch (e) {
+        console.error(e);
+        els.status.textContent = `加载失败：${e.message || e}`;
+        els.status.classList.add("error");
+      }
+    })();
+  </script>
+</body>
+</html>

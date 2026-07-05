@@ -23,6 +23,7 @@ StockAnalysis 的接口只返回「最近交易日」，没法查历史。所以
 | `data/history.json` | 由脚本预计算：每股近 20 日收盘价（迷你走势图）+ 5/10/30 日年化波动率 + 全市场波动率指数。 |
 | `intraday.html` / `fetch_intraday.py` / `data/intraday.json` | 日内波动率排名页：最活跃 500 只的 Yahoo 5 分钟 K 线 → 每日已实现日内波动率，按 1D/5D/1M 平均排名。 |
 | `highlow.html` / `fetch_highlow.py` / `data/highlow.json` | 创新高/新低榜：最活跃 500 只的复权日线（261 交易日），窗口 1–52 周、严格收盘口径，按区间幅度排名。 |
+| `sectors.html` / `fetch_sectors.py` / `data/sectors.json` | 板块/行业相关性 3D 星系图：市值加权组合日收益的 Pearson 相关（1M/3M/6M/1Y），红=正相关、绿=负相关，可拖拽。 |
 
 ## 本地使用
 浏览器有同源限制，直接双击打开 `index.html` 读不到本地 JSON，要起一个静态服务器：
