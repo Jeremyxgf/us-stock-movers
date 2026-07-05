@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>美股创新高 / 新低榜</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fb; --panel: #ffffff; --ink: #172033; --muted: #637083;
+      --line: #dfe5ee; --red: #b42318; --green: #087443; --blue: #2457a6;
+      --shadow: 0 18px 48px rgba(23, 32, 51, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        linear-gradient(135deg, rgba(8,116,67,0.08), transparent 34%),
+        linear-gradient(225deg, rgba(180,35,24,0.08), transparent 38%),
+        var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.5;
+    }
+    .wrap { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 32px 0 40px; }
+    header { display: grid; gap: 12px; grid-template-columns: 1fr auto; align-items: end; margin-bottom: 18px; }
+    h1 { margin: 0 0 8px; font-size: clamp(28px, 4vw, 46px); line-height: 1.06; }
+    .subtitle { margin: 0; color: var(--muted); font-size: 15px; }
+    .backlink { color: var(--blue); text-decoration: none; font-weight: 700; font-size: 14px; white-space: nowrap; }
+    .backlink:hover { text-decoration: underline; }
+    .stamp { display: inline-flex; flex-direction: column; gap: 3px; padding: 12px 14px; border: 1px solid var(--line);
+      border-radius: 8px; background: rgba(255,255,255,0.78); box-shadow: var(--shadow); text-align: right; }
+    .stamp b { font-size: 16px; } .stamp span { color: var(--muted); font-size: 12px; }
+    .controls {
+      display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 14px; align-items: end;
+      margin: 0 0 14px; padding: 16px; border: 1px solid var(--line); border-radius: 8px;
+      background: var(--panel); box-shadow: var(--shadow);
+    }
+    label { display: grid; gap: 6px; color: var(--muted); font-size: 13px; font-weight: 650; }
+    input {
+      width: 100%; min-height: 42px; border: 1px solid var(--line); border-radius: 8px;
+      padding: 9px 11px; color: var(--ink); font: inherit; font-size: 15px; background: #fbfdff;
+    }
+    input:focus { border-color: var(--blue); outline: 3px solid rgba(36,87,166,0.16); }
+    button {
+      min-height: 42px; border: 0; border-radius: 8px; padding: 0 18px;
+      background: var(--blue); color: #fff; font: inherit; font-weight: 750; cursor: pointer;
+    }
+    .status { min-height: 20px; margin: -2px 2px 14px; color: var(--muted); font-size: 13px; }
+    .status.error { color: var(--red); font-weight: 650; }
+    .tables { display: grid; gap: 22px; }
+    .table-panel { overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); }
+    .table-head { display: flex; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--line); }
+    .table-head strong { font-size: 17px; } .table-head span { color: var(--muted); font-size: 13px; text-align: right; }
+    .scroll { overflow-x: auto; }
+    table { width: 100%; min-width: 900px; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+    th { position: sticky; top: 0; z-index: 1; background: #f9fbfe; color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; }
+    th.sortable { cursor: pointer; user-select: none; }
+    th.sortable:hover { color: var(--ink); } th.sortable.active { color: var(--blue); }
+    th .arrow { margin-left: 4px; font-size: 10px; }
+    td.rank, th.rank { width: 56px; text-align: center; }
+    td.symbol, th.symbol, td.name, th.name { text-align: left; }
+    td.symbol { color: var(--blue); font-weight: 800; }
+    td.name { max-width: 280px; overflow: hidden; color: #30394b; text-overflow: ellipsis; }
+    .gain { color: var(--green); font-weight: 750; }
+    .loss { color: var(--red); font-weight: 750; }
+    td.spark { width: 132px; padding-top: 6px; padding-bottom: 6px; }
+    .spark-empty { color: var(--muted); }
+    tbody tr:hover { background: #f8fbff; }
+    tbody tr:last-child td { border-bottom: 0; }
+    .empty { color: var(--muted); text-align: center; }
+    .note { margin: 14px 2px 0; color: var(--muted); font-size: 13px; }
+    .note a { color: var(--blue); text-decoration: none; font-weight: 650; }
+    @media (max-width: 760px) { header, .controls { grid-template-columns: 1fr; } .stamp { text-align: left; } }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <div>
+        <h1>美股创新高 / 新低榜</h1>
+        <p class="subtitle">严格收盘口径：今日收盘价即窗口内最高 / 最低收盘。窗口 1–52 周（交易日），按区间幅度排名，看整体气势。
+          <a class="backlink" href="./index.html">← 返回涨跌幅榜单</a></p>
+      </div>
+      <div class="stamp" aria-label="数据状态">
+        <b id="as-of">加载中…</b>
+        <span>StockAnalysis 日线（每日快照）</span>
+      </div>
+    </header>
+
+    <form class="controls" id="query-form">
+      <label>
+        窗口（周，1–52，1周 = 5 个交易日）
+        <input id="weeks" type="number" min="1" max="52" step="1" value="4" inputmode="numeric">
+      </label>
+      <label>
+        Top 数量
+        <input id="top-count" type="number" min="1" max="500" step="1" value="30" inputmode="numeric">
+      </label>
+      <label>
+        最低市值（十亿美元 / B，0 = 不限）
+        <input id="min-cap" type="number" min="0" max="10000" step="0.1" value="0" inputmode="decimal">
+      </label>
+      <button type="submit">查询</button>
+    </form>
+    <div class="status" id="status">准备加载。</div>
+
+    <section class="tables">
+      <section class="table-panel" aria-label="创新高榜">
+        <div class="table-head">
+          <strong id="high-title">创新高榜</strong>
+          <span id="high-meta">等待加载。</span>
+        </div>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th class="rank">排名</th>
+                <th class="symbol">代码</th>
+                <th class="name">公司</th>
+                <th class="sortable" data-key="price">收盘价<span class="arrow"></span></th>
+                <th>窗口最高收盘</th>
+                <th class="sortable" data-key="distIntra">距盘中最高<span class="arrow"></span></th>
+                <th class="sortable" data-key="chg">区间涨幅<span class="arrow"></span></th>
+                <th class="sortable" data-key="mc">市值<span class="arrow"></span></th>
+                <th class="spark">窗口走势</th>
+              </tr>
+            </thead>
+            <tbody id="high-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="table-panel" aria-label="创新低榜">
+        <div class="table-head">
+          <strong id="low-title">创新低榜</strong>
+          <span id="low-meta">等待加载。</span>
+        </div>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th class="rank">排名</th>
+                <th class="symbol">代码</th>
+                <th class="name">公司</th>
+                <th class="sortable" data-key="price">收盘价<span class="arrow"></span></th>
+                <th>窗口最低收盘</th>
+                <th class="sortable" data-key="distIntra">距盘中最低<span class="arrow"></span></th>
+                <th class="sortable" data-key="chg">区间跌幅<span class="arrow"></span></th>
+                <th class="sortable" data-key="mc">市值<span class="arrow"></span></th>
+                <th class="spark">窗口走势</th>
+              </tr>
+            </thead>
+            <tbody id="low-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <p class="note">
+      判定为<strong>严格收盘口径</strong>：今日收盘价 = 所选窗口内（含今日）的最高 / 最低<strong>收盘价</strong>。
+      「距盘中最高/最低」= 今收对窗口内<strong>盘中</strong>极值的距离（收盘新高但盘中曾更高时为负）。
+      「区间涨/跌幅」= 今收对窗口起点前一日收盘的变化，榜单默认按其幅度排序；「窗口走势」画的是窗口内每日收盘。
+      股票池为按成交额最活跃约 500 只（与<a href="./intraday.html">日内波动率页</a>一致），价格已按拆股/分红复权；
+      上市时间不足所选窗口的股票不参与判定。数据源：<a href="https://stockanalysis.com/">StockAnalysis</a> 日线，每交易日收盘后由
+      <code>fetch_highlow.py</code> 抓取存 <code>data/highlow.json</code>。本页仅供参考，不构成投资建议。
+    </p>
+  </main>
+
+  <script>
+    const DATA_URL = "./data/highlow.json";
+    const els = {
+      form: document.getElementById("query-form"),
+      weeks: document.getElementById("weeks"),
+      topCount: document.getElementById("top-count"),
+      minCap: document.getElementById("min-cap"),
+      status: document.getElementById("status"),
+      asOf: document.getElementById("as-of"),
+      highTitle: document.getElementById("high-title"),
+      lowTitle: document.getElementById("low-title"),
+      highMeta: document.getElementById("high-meta"),
+      lowMeta: document.getElementById("low-meta"),
+      highBody: document.getElementById("high-body"),
+      lowBody: document.getElementById("low-body"),
+    };
+    const LABELS = { price: "收盘价", distIntra: "距盘中极值", chg: "区间幅度", mc: "市值" };
+    let data = null;
+    let sortKey = "chg", sortDir = "desc";
+
+    const clampInt = (v, lo, hi, dflt) => {
+      const n = Math.floor(Number(v));
+      return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt;
+    };
+    const escapeHtml = (v) => String(v).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+    const fmtPrice = (v) => v == null ? "-" : (v < 1 ? `$${(+v).toFixed(4)}` : `$${(+v).toFixed(2)}`);
+    const fmtPct = (v, signed = true) => {
+      if (v == null || !Number.isFinite(+v)) return "-";
+      const s = signed && v > 0 ? "+" : "";
+      return `${s}${(+v).toFixed(2)}%`;
+    };
+    const fmtCap = (v) => {
+      if (v == null || !(+v > 0)) return "-";
+      const a = Math.abs(v);
+      if (a >= 1e12) return `$${(v/1e12).toFixed(2)}T`;
+      if (a >= 1e9) return `$${(v/1e9).toFixed(2)}B`;
+      if (a >= 1e6) return `$${(v/1e6).toFixed(2)}M`;
+      return `$${Math.round(v).toLocaleString("en-US")}`;
+    };
+
+    // 窗口收盘价迷你走势：末值 ≥ 首值绿、否则红（气势一眼可见）
+    function sparklineSVG(closes) {
+      const w = 120, h = 26, pad = 3;
+      if (!closes || closes.length < 2) return `<span class="spark-empty">–</span>`;
+      const min = Math.min(...closes), max = Math.max(...closes), span = max - min || 1;
+      const step = (w - pad * 2) / (closes.length - 1);
+      const pts = closes.map((c, i) => `${(pad + i * step).toFixed(1)},${(pad + (h - pad * 2) * (1 - (c - min) / span)).toFixed(1)}`).join(" ");
+      const color = closes[closes.length - 1] >= closes[0] ? "var(--green)" : "var(--red)";
+      return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><polyline fill="none" stroke="${color}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" points="${pts}"></polyline></svg>`;
+    }
+
+    function sortRows(list, key, dir) {
+      const f = dir === "asc" ? 1 : -1;
+      return list.slice().sort((a, b) => {
+        const av = Number(a[key]), bv = Number(b[key]);
+        const an = !Number.isFinite(av), bn = !Number.isFinite(bv);
+        if (an && bn) return 0; if (an) return 1; if (bn) return -1;
+        return (av - bv) * f;
+      });
+    }
+
+    function updateIndicators() {
+      document.querySelectorAll("th.sortable").forEach((th) => {
+        const active = th.dataset.key === sortKey;
+        th.classList.toggle("active", active);
+        const arrow = th.querySelector(".arrow");
+        if (arrow) arrow.textContent = active ? (sortDir === "asc" ? "▲" : "▼") : "";
+      });
+    }
+
+    // 对每只股票按窗口 D=5W 个交易日现算指标；不满窗口（<D+1 天）不参与
+    function computeLists(weeks, minCapDollars) {
+      const D = weeks * 5;
+      const highs = [], lows = [];
+      for (const [s, v] of Object.entries(data.stocks)) {
+        const { c, h, l } = v;
+        if (c.length < D + 1) continue;
+        if (minCapDollars > 0 && !(Number(v.mc) >= minCapDollars)) continue;
+        const winC = c.slice(-D), winH = h.slice(-D), winL = l.slice(-D);
+        const today = c[c.length - 1];
+        const base = c[c.length - D - 1];
+        const chg = base > 0 ? (today / base - 1) * 100 : null;
+        const common = { s, n: v.n, mc: v.mc, price: today, chg, spark: winC };
+        if (today >= Math.max(...winC)) {
+          highs.push({ ...common, extreme: Math.max(...winC), distIntra: (today / Math.max(...winH) - 1) * 100 });
+        } else if (today <= Math.min(...winC)) {
+          lows.push({ ...common, extreme: Math.min(...winC), distIntra: (today / Math.min(...winL) - 1) * 100 });
+        }
+      }
+      return { highs, lows };
+    }
+
+    function renderRows(list, body, isHigh) {
+      if (!list.length) {
+        body.innerHTML = `<tr><td class="empty" colspan="9">该窗口没有符合条件的股票。</td></tr>`;
+        return;
+      }
+      body.innerHTML = list.map((r, i) => `
+        <tr>
+          <td class="rank">${i + 1}</td>
+          <td class="symbol">${escapeHtml(r.s)}</td>
+          <td class="name">${escapeHtml(r.n || "")}</td>
+          <td>${fmtPrice(r.price)}</td>
+          <td>${fmtPrice(r.extreme)}</td>
+          <td>${fmtPct(r.distIntra)}</td>
+          <td class="${isHigh ? "gain" : "loss"}">${fmtPct(r.chg)}</td>
+          <td>${fmtCap(r.mc)}</td>
+          <td class="spark">${sparklineSVG(r.spark)}</td>
+        </tr>`).join("");
+    }
+
+    function render() {
+      if (!data) return;
+      const weeks = clampInt(els.weeks.value, 1, 52, 4);
+      const topN = clampInt(els.topCount.value, 1, 500, 30);
+      const minCapB = Math.max(0, Number(els.minCap.value) || 0);
+      els.weeks.value = weeks; els.topCount.value = topN;
+      const { highs, lows } = computeLists(weeks, minCapB * 1e9);
+
+      // 新高榜按 chg 降序（涨幅大在前）、新低榜按 chg 升序（跌幅大在前）；其它列两榜同方向
+      const lowDir = sortKey === "chg" ? (sortDir === "asc" ? "desc" : "asc") : sortDir;
+      const hi = sortRows(highs, sortKey, sortDir).slice(0, topN);
+      const lo = sortRows(lows, sortKey, lowDir).slice(0, topN);
+      renderRows(hi, els.highBody, true);
+      renderRows(lo, els.lowBody, false);
+
+      const label = LABELS[sortKey] || sortKey;
+      els.highTitle.textContent = `创 ${weeks} 周新高 Top ${topN}`;
+      els.lowTitle.textContent = `创 ${weeks} 周新低 Top ${topN}`;
+      els.highMeta.textContent = `共 ${highs.length} 只创新高，显示 ${hi.length} 条，按${label}排序。`;
+      els.lowMeta.textContent = `共 ${lows.length} 只创新低，显示 ${lo.length} 条，按${label}排序。`;
+      els.status.textContent = `交易日 ${data.asOf}，股票池 ${Object.keys(data.stocks).length} 只：${weeks} 周（${weeks * 5} 交易日）窗口内 ${highs.length} 只创新高、${lows.length} 只创新低。`;
+      updateIndicators();
+    }
+
+    async function load() {
+      els.status.textContent = "正在加载 highlow.json…";
+      try {
+        const res = await fetch(DATA_URL, { cache: "no-cache" });
+        if (!res.ok) throw new Error(`加载失败（${res.status}）。是否已运行 fetch_highlow.py？`);
+        data = await res.json();
+        els.asOf.textContent = data.asOf || "—";
+        render();
+      } catch (e) {
+        console.error(e);
+        els.status.textContent = `加载失败：${e.message || e}`;
+        els.status.classList.add("error");
+        els.highBody.innerHTML = `<tr><td class="empty" colspan="9">暂无数据。</td></tr>`;
+        els.lowBody.innerHTML = `<tr><td class="empty" colspan="9">暂无数据。</td></tr>`;
+      }
+    }
+
+    document.querySelectorAll("th.sortable").forEach((th) => {
+      th.addEventListener("click", () => {
+        const key = th.dataset.key;
+        if (sortKey === key) sortDir = sortDir === "asc" ? "desc" : "asc";
+        else { sortKey = key; sortDir = "desc"; }
+        render();
+      });
+    });
+    els.form.addEventListener("submit", (e) => { e.preventDefault(); render(); });
+    load();
+  </script>
+</body>
+</html>

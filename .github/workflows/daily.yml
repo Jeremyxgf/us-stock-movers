@@ -44,6 +44,10 @@ jobs:
         if: github.event_name != 'push'
         run: python3 fetch_intraday.py
 
+      - name: Fetch high/low history
+        if: github.event_name != 'push'
+        run: python3 fetch_highlow.py
+
       - name: Commit data if changed
         if: github.event_name != 'push'
         run: |
@@ -63,6 +67,7 @@ jobs:
           mkdir -p _site
           cp index.html _site/
           cp intraday.html _site/
+          cp highlow.html _site/
           cp -r data _site/
 
       - name: Setup Pages
