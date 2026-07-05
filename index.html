@@ -84,7 +84,7 @@
 
     .controls {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr 1fr auto;
+      grid-template-columns: auto 1fr 1fr 1fr 1fr auto;
       gap: 14px;
       align-items: end;
       margin: 0 0 18px;
@@ -153,6 +153,48 @@
     button:disabled {
       opacity: 0.58;
       cursor: wait;
+    }
+
+    /* 涨/跌榜切换按钮 */
+    .seg {
+      display: flex;
+    }
+
+    .seg.disabled {
+      opacity: 0.45;
+      pointer-events: none;
+    }
+
+    .seg-btn {
+      min-height: 42px;
+      padding: 0 16px;
+      border: 1px solid var(--line);
+      background: #fbfdff;
+      color: var(--muted);
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .seg-btn:first-child {
+      border-radius: 8px 0 0 8px;
+    }
+
+    .seg-btn:last-child {
+      border-radius: 0 8px 8px 0;
+      border-left: 0;
+    }
+
+    .seg-btn.active-low {
+      border-color: var(--red);
+      background: var(--red);
+      color: #fff;
+    }
+
+    .seg-btn.active-high {
+      border-color: var(--green);
+      background: var(--green);
+      color: #fff;
     }
 
     .status {
@@ -547,6 +589,13 @@
 
     <form class="controls" id="query-form">
       <label>
+        榜单（按涨跌幅时生效）
+        <span class="seg" id="board-seg">
+          <button type="button" class="seg-btn active-low" id="btn-losers">跌幅榜</button>
+          <button type="button" class="seg-btn" id="btn-gainers">涨幅榜</button>
+        </span>
+      </label>
+      <label>
         Top 数量
         <input id="top-count" type="number" min="1" max="100" step="1" value="30" inputmode="numeric">
       </label>
@@ -592,7 +641,7 @@
     </section>
 
     <section class="tables" aria-label="涨跌幅榜">
-      <section class="table-panel" id="gainers-panel" aria-label="涨幅榜">
+      <section class="table-panel" id="gainers-panel" aria-label="涨幅榜" style="display:none">
         <div class="table-head">
           <strong id="gainers-title">涨幅榜</strong>
           <span id="gainers-meta">等待查询。</span>
@@ -703,7 +752,10 @@
       gainersMeta: document.getElementById("gainers-meta"),
       losersMeta: document.getElementById("losers-meta"),
       gainersBody: document.getElementById("gainers-body"),
-      losersBody: document.getElementById("losers-body")
+      losersBody: document.getElementById("losers-body"),
+      boardSeg: document.getElementById("board-seg"),
+      btnLosers: document.getElementById("btn-losers"),
+      btnGainers: document.getElementById("btn-gainers")
     };
 
     // 列名 → 中文标签，用于榜单标题/说明
@@ -719,6 +771,7 @@
     // 排序状态：sortKey 当前排序列，sortDir 方向。由下拉框或点击表头改变。
     let sortKey = "change";
     let sortDir = "desc";
+    let boardSide = "losers";   // 涨跌幅模式下显示哪张榜：losers=跌幅榜（默认）/ gainers=涨幅榜
     let currentRows = [];   // 当前交易日、已补换手率的全量行（点表头重排时不再重新加载）
 
     function sanitizeTopCount(value) {
@@ -1010,22 +1063,34 @@
       els.maxLoss.textContent = Number.isFinite(minChange) && minChange < 0 ? `${minChange.toFixed(2)}%` : "-";
       els.capCard.textContent = formatCompact(minCapDollars, true);
 
+      // 涨/跌榜切换按钮：仅涨跌幅模式下生效
+      els.boardSeg.classList.toggle("disabled", !twoBoard);
+      els.btnLosers.className = "seg-btn" + (twoBoard && boardSide === "losers" ? " active-low" : "");
+      els.btnGainers.className = "seg-btn" + (twoBoard && boardSide === "gainers" ? " active-high" : "");
+
       let shown = 0;
       if (twoBoard) {
-        els.losersPanel.style.display = "";
         els.gainersChangeTh.firstChild.textContent = "涨幅";
-        const gainers = sortRows(pool.filter((r) => Number(r.change) > 0), sortKey, sortDir).slice(0, topN);
-        // 跌幅榜：按涨跌幅排序时用相反方向（最大跌幅在前）；按其它列排序时与涨幅榜同方向
-        const loserDir = sortKey === "change" ? (sortDir === "asc" ? "desc" : "asc") : sortDir;
-        const losers = sortRows(pool.filter((r) => Number(r.change) < 0), sortKey, loserDir).slice(0, topN);
-        renderRows(gainers, els.gainersBody, "没有找到符合条件的上涨股票。");
-        renderRows(losers, els.losersBody, "没有找到符合条件的下跌股票。");
-        els.gainersTitle.textContent = `涨幅榜 Top ${topN}`;
-        els.losersTitle.textContent = `跌幅榜 Top ${topN}`;
-        els.gainersMeta.textContent = `显示 ${gainers.length} 条，按${sortLabel}排序，${capText}。`;
-        els.losersMeta.textContent = `显示 ${losers.length} 条，按${sortLabel}排序，${capText}。`;
-        shown = gainers.length + losers.length;
+        const showLosers = boardSide === "losers";
+        els.gainersPanel.style.display = showLosers ? "none" : "";
+        els.losersPanel.style.display = showLosers ? "" : "none";
+        if (showLosers) {
+          // 跌幅榜：按涨跌幅排序时用相反方向（最大跌幅在前）；按其它列排序时同方向
+          const loserDir = sortKey === "change" ? (sortDir === "asc" ? "desc" : "asc") : sortDir;
+          const losers = sortRows(pool.filter((r) => Number(r.change) < 0), sortKey, loserDir).slice(0, topN);
+          renderRows(losers, els.losersBody, "没有找到符合条件的下跌股票。");
+          els.losersTitle.textContent = `跌幅榜 Top ${topN}`;
+          els.losersMeta.textContent = `显示 ${losers.length} 条，按${sortLabel}排序，${capText}。`;
+          shown = losers.length;
+        } else {
+          const gainers = sortRows(pool.filter((r) => Number(r.change) > 0), sortKey, sortDir).slice(0, topN);
+          renderRows(gainers, els.gainersBody, "没有找到符合条件的上涨股票。");
+          els.gainersTitle.textContent = `涨幅榜 Top ${topN}`;
+          els.gainersMeta.textContent = `显示 ${gainers.length} 条，按${sortLabel}排序，${capText}。`;
+          shown = gainers.length;
+        }
       } else {
+        els.gainersPanel.style.display = "";
         els.losersPanel.style.display = "none";
         els.gainersChangeTh.firstChild.textContent = "涨跌幅";
         const list = sortRows(pool, sortKey, sortDir).slice(0, topN);
@@ -1220,6 +1285,9 @@
         if (btn) openChart(btn.dataset.sym, btn.dataset.name);
       });
     });
+
+    els.btnLosers.addEventListener("click", () => { boardSide = "losers"; render(); });
+    els.btnGainers.addEventListener("click", () => { boardSide = "gainers"; render(); });
 
     els.form.addEventListener("submit", runQuery);
     runQuery();
