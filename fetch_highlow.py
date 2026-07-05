@@ -71,10 +71,10 @@ def fetch_history(symbol: str):
 
 
 def extract_series(payload):
-    """返回 (last_date, closes[], highs[], lows[])，升序、复权、保留最近 KEEP_DAYS 天。"""
+    """返回 (last_date, dates[], closes[], highs[], lows[])，升序、复权、保留最近 KEEP_DAYS 天。"""
     rows = (payload or {}).get("data") or []
     rows = sorted(rows, key=lambda r: r.get("t") or "")[-KEEP_DAYS:]
-    closes, highs, lows = [], [], []
+    dates, closes, highs, lows = [], [], [], []
     last_date = None
     for r in rows:
         c, h, l, a = r.get("c"), r.get("h"), r.get("l"), r.get("a")
@@ -85,8 +85,9 @@ def extract_series(payload):
         closes.append(round(c * f, 4))
         highs.append(round((h if isinstance(h, (int, float)) and h > 0 else c) * f, 4))
         lows.append(round((l if isinstance(l, (int, float)) and l > 0 else c) * f, 4))
+        dates.append(r.get("t"))
         last_date = r.get("t")
-    return last_date, closes, highs, lows
+    return last_date, dates, closes, highs, lows
 
 
 def build():
@@ -94,13 +95,16 @@ def build():
     print(f"股票池 {len(symbols)} 只（按成交额），基准交易日 {latest}")
     stocks = {}
     last_dates = Counter()
+    calendar = []            # 全局交易日历（取首个满 KEEP_DAYS 天的股票的日期序列）
     for i, sym in enumerate(symbols, 1):
         payload = fetch_history(sym)
-        last_date, c, h, l = extract_series(payload)
+        last_date, dts, c, h, l = extract_series(payload)
         if len(c) >= 6:                      # 起码够 1 周窗口
             stocks[sym] = {"n": meta[sym]["n"], "mc": meta[sym]["mc"],
                            "d": last_date, "c": c, "h": h, "l": l}
             last_dates[last_date] += 1
+            if not calendar and len(dts) == KEEP_DAYS:
+                calendar = dts
         if i % 50 == 0:
             print(f"  进度 {i}/{len(symbols)}，成功 {len(stocks)}")
         time.sleep(SLEEP_BETWEEN)
@@ -117,6 +121,7 @@ def build():
         "asOf": as_of,
         "universe": len(stocks),
         "keepDays": KEEP_DAYS,
+        "dates": calendar,       # 与各股数组尾部对齐的交易日历（升序），供网页换算窗口起始日
         "stocks": stocks,
         "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }

@@ -122,6 +122,7 @@
                 <th class="sortable" data-key="price">收盘价<span class="arrow"></span></th>
                 <th>窗口最低–最高</th>
                 <th class="sortable" data-key="distIntra">距盘中最高<span class="arrow"></span></th>
+                <th>起算日</th>
                 <th class="sortable" data-key="chg">区间涨幅<span class="arrow"></span></th>
                 <th class="sortable" data-key="mc">市值<span class="arrow"></span></th>
                 <th class="spark">窗口走势</th>
@@ -147,6 +148,7 @@
                 <th class="sortable" data-key="price">收盘价<span class="arrow"></span></th>
                 <th>窗口最低–最高</th>
                 <th class="sortable" data-key="distIntra">距盘中最低<span class="arrow"></span></th>
+                <th>起算日</th>
                 <th class="sortable" data-key="chg">区间跌幅<span class="arrow"></span></th>
                 <th class="sortable" data-key="mc">市值<span class="arrow"></span></th>
                 <th class="spark">窗口走势</th>
@@ -161,7 +163,7 @@
     <p class="note">
       判定为<strong>严格收盘口径</strong>：今日收盘价 = 所选窗口内（含今日）的最高 / 最低<strong>收盘价</strong>。
       「窗口最低–最高」为窗口内的<strong>盘中</strong>价格区间；「距盘中最高/最低」= 今收对该盘中极值的距离（收盘新高但盘中曾更高时为负）。
-      「区间涨/跌幅」= 今收对窗口起点前一日收盘的变化，榜单默认按其幅度排序；「窗口走势」画的是窗口内每日收盘。
+      「区间涨/跌幅」= 今收对「起算日」（窗口首日的前一交易日）收盘的变化，即标准的 N 日涨跌幅，榜单默认按其幅度排序；「窗口走势」画的是窗口内每日收盘。
       股票池为按成交额最活跃约 500 只（与<a href="./intraday.html">日内波动率页</a>一致），价格已按拆股/分红复权；
       上市时间不足所选窗口的股票不参与判定。数据源：<a href="https://stockanalysis.com/">StockAnalysis</a> 日线，每交易日收盘后由
       <code>fetch_highlow.py</code> 抓取存 <code>data/highlow.json</code>。本页仅供参考，不构成投资建议。
@@ -241,6 +243,8 @@
     // 对每只股票按窗口 D=5W 个交易日现算指标；不满窗口（<D+1 天）不参与
     function computeLists(weeks, minCapDollars) {
       const D = weeks * 5;
+      const cal = data.dates || [];
+      const baseDate = cal.length > D ? cal[cal.length - D - 1] : null;   // 区间涨跌幅的基准收盘日
       const highs = [], lows = [];
       for (const [s, v] of Object.entries(data.stocks)) {
         const { c, h, l } = v;
@@ -251,7 +255,7 @@
         const base = c[c.length - D - 1];
         const chg = base > 0 ? (today / base - 1) * 100 : null;
         const winHi = Math.max(...winH), winLo = Math.min(...winL);   // 窗口内盘中极值
-        const common = { s, n: v.n, mc: v.mc, price: today, chg, spark: winC, winHi, winLo };
+        const common = { s, n: v.n, mc: v.mc, price: today, chg, spark: winC, winHi, winLo, baseDate };
         if (today >= Math.max(...winC)) {
           highs.push({ ...common, distIntra: (today / winHi - 1) * 100 });
         } else if (today <= Math.min(...winC)) {
@@ -263,7 +267,7 @@
 
     function renderRows(list, body, isHigh) {
       if (!list.length) {
-        body.innerHTML = `<tr><td class="empty" colspan="9">该窗口没有符合条件的股票。</td></tr>`;
+        body.innerHTML = `<tr><td class="empty" colspan="10">该窗口没有符合条件的股票。</td></tr>`;
         return;
       }
       body.innerHTML = list.map((r, i) => `
@@ -274,6 +278,7 @@
           <td>${fmtPrice(r.price)}</td>
           <td>${fmtPrice(r.winLo)} – ${fmtPrice(r.winHi)}</td>
           <td>${fmtPct(r.distIntra)}</td>
+          <td>${escapeHtml(r.baseDate || "-")}</td>
           <td class="${isHigh ? "gain" : "loss"}">${fmtPct(r.chg)}</td>
           <td>${fmtCap(r.mc)}</td>
           <td class="spark">${sparklineSVG(r.spark)}</td>
@@ -300,7 +305,10 @@
       els.lowTitle.textContent = `创 ${weeks} 周新低 Top ${topN}`;
       els.highMeta.textContent = `共 ${highs.length} 只创新高，显示 ${hi.length} 条，按${label}排序。`;
       els.lowMeta.textContent = `共 ${lows.length} 只创新低，显示 ${lo.length} 条，按${label}排序。`;
-      els.status.textContent = `交易日 ${data.asOf}，股票池 ${Object.keys(data.stocks).length} 只：${weeks} 周（${weeks * 5} 交易日）窗口内 ${highs.length} 只创新高、${lows.length} 只创新低。`;
+      const cal = data.dates || [];
+      const D = weeks * 5;
+      const rangeText = cal.length > D ? `${cal[cal.length - D]} → ${cal[cal.length - 1]}，起算日 ${cal[cal.length - D - 1]}，` : "";
+      els.status.textContent = `交易日 ${data.asOf}，股票池 ${Object.keys(data.stocks).length} 只：${weeks} 周（${weeks * 5} 交易日，${rangeText}）窗口内 ${highs.length} 只创新高、${lows.length} 只创新低。`;
       updateIndicators();
     }
 
@@ -316,8 +324,8 @@
         console.error(e);
         els.status.textContent = `加载失败：${e.message || e}`;
         els.status.classList.add("error");
-        els.highBody.innerHTML = `<tr><td class="empty" colspan="9">暂无数据。</td></tr>`;
-        els.lowBody.innerHTML = `<tr><td class="empty" colspan="9">暂无数据。</td></tr>`;
+        els.highBody.innerHTML = `<tr><td class="empty" colspan="10">暂无数据。</td></tr>`;
+        els.lowBody.innerHTML = `<tr><td class="empty" colspan="10">暂无数据。</td></tr>`;
       }
     }
 
