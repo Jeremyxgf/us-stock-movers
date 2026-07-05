@@ -120,7 +120,6 @@
                 <th class="symbol">代码</th>
                 <th class="name">公司</th>
                 <th class="sortable" data-key="price">收盘价<span class="arrow"></span></th>
-                <th>窗口最高收盘</th>
                 <th class="sortable" data-key="distIntra">距盘中最高<span class="arrow"></span></th>
                 <th class="sortable" data-key="chg">区间涨幅<span class="arrow"></span></th>
                 <th class="sortable" data-key="mc">市值<span class="arrow"></span></th>
@@ -145,7 +144,6 @@
                 <th class="symbol">代码</th>
                 <th class="name">公司</th>
                 <th class="sortable" data-key="price">收盘价<span class="arrow"></span></th>
-                <th>窗口最低收盘</th>
                 <th class="sortable" data-key="distIntra">距盘中最低<span class="arrow"></span></th>
                 <th class="sortable" data-key="chg">区间跌幅<span class="arrow"></span></th>
                 <th class="sortable" data-key="mc">市值<span class="arrow"></span></th>
@@ -252,9 +250,9 @@
         const chg = base > 0 ? (today / base - 1) * 100 : null;
         const common = { s, n: v.n, mc: v.mc, price: today, chg, spark: winC };
         if (today >= Math.max(...winC)) {
-          highs.push({ ...common, extreme: Math.max(...winC), distIntra: (today / Math.max(...winH) - 1) * 100 });
+          highs.push({ ...common, distIntra: (today / Math.max(...winH) - 1) * 100 });
         } else if (today <= Math.min(...winC)) {
-          lows.push({ ...common, extreme: Math.min(...winC), distIntra: (today / Math.min(...winL) - 1) * 100 });
+          lows.push({ ...common, distIntra: (today / Math.min(...winL) - 1) * 100 });
         }
       }
       return { highs, lows };
@@ -262,7 +260,7 @@
 
     function renderRows(list, body, isHigh) {
       if (!list.length) {
-        body.innerHTML = `<tr><td class="empty" colspan="9">该窗口没有符合条件的股票。</td></tr>`;
+        body.innerHTML = `<tr><td class="empty" colspan="8">该窗口没有符合条件的股票。</td></tr>`;
         return;
       }
       body.innerHTML = list.map((r, i) => `
@@ -271,7 +269,6 @@
           <td class="symbol">${escapeHtml(r.s)}</td>
           <td class="name">${escapeHtml(r.n || "")}</td>
           <td>${fmtPrice(r.price)}</td>
-          <td>${fmtPrice(r.extreme)}</td>
           <td>${fmtPct(r.distIntra)}</td>
           <td class="${isHigh ? "gain" : "loss"}">${fmtPct(r.chg)}</td>
           <td>${fmtCap(r.mc)}</td>
@@ -315,8 +312,8 @@
         console.error(e);
         els.status.textContent = `加载失败：${e.message || e}`;
         els.status.classList.add("error");
-        els.highBody.innerHTML = `<tr><td class="empty" colspan="9">暂无数据。</td></tr>`;
-        els.lowBody.innerHTML = `<tr><td class="empty" colspan="9">暂无数据。</td></tr>`;
+        els.highBody.innerHTML = `<tr><td class="empty" colspan="8">暂无数据。</td></tr>`;
+        els.lowBody.innerHTML = `<tr><td class="empty" colspan="8">暂无数据。</td></tr>`;
       }
     }
 
