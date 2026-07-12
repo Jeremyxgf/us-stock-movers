@@ -75,29 +75,44 @@ def fetch_chart(symbol: str):
 
 
 def daily_realized_vol(payload):
-    """把分钟 bar 按美东交易日分组，返回 [(date, RV_日%), ...] 升序。"""
+    """把分钟 bar 按美东交易日分组，返回 [(date, RV_日%, bk大单占比), ...] 升序。
+
+    bk = 当天成交量中，落在「量 ≥ 3×当日 bar 中位量」的 5 分钟 bar 里的比例，
+    作为大单/机构活动的代理指标（真实逐笔数据免费拿不到）。
+    """
     try:
         res = payload["chart"]["result"][0]
         ts = res.get("timestamp") or []
-        closes = res["indicators"]["quote"][0].get("close") or []
+        quote = res["indicators"]["quote"][0]
+        closes = quote.get("close") or []
+        vols = quote.get("volume") or []
     except (KeyError, IndexError, TypeError):
         return []
-    by_day = defaultdict(list)   # date -> [(epoch, close)]
-    for t, c in zip(ts, closes):
+    by_day = defaultdict(list)   # date -> [(epoch, close, vol)]
+    for t, c, v in zip(ts, closes, vols):
         if c is None:
             continue
         d = datetime.fromtimestamp(t, timezone.utc).astimezone(EASTERN).date()
-        by_day[d].append((t, c))
+        by_day[d].append((t, c, v or 0))
     out = []
     for d in sorted(by_day):
-        seq = [c for _, c in sorted(by_day[d])]
+        rows = sorted(by_day[d])
+        seq = [c for _, c, _ in rows]
         if len(seq) < 3:            # bar 太少不可靠
             continue
         rv2 = 0.0
         for i in range(1, len(seq)):
             if seq[i - 1] > 0 and seq[i] > 0:
                 rv2 += math.log(seq[i] / seq[i - 1]) ** 2
-        out.append((d.isoformat(), math.sqrt(rv2)))   # 返回空间的日内波动（≈日 std）
+        bar_vols = sorted(v for _, _, v in rows if v > 0)
+        if bar_vols:
+            med = bar_vols[len(bar_vols) // 2]
+            tot = sum(bar_vols)
+            big = sum(v for _, _, v in rows if v >= 3 * med)
+            bk = big / tot if tot > 0 else None
+        else:
+            bk = None
+        out.append((d.isoformat(), math.sqrt(rv2), bk))
     return out
 
 
@@ -110,7 +125,8 @@ def build():
         payload = fetch_chart(sym)
         rv = daily_realized_vol(payload) if payload else []
         if rv:
-            series = [round(v * 100, 3) for _, v in rv]   # 日 %
+            series = [round(v * 100, 3) for _, v, _ in rv]   # 日 %
+            bks = [round(b, 3) if b is not None else None for _, _, b in rv]
             iv1d = series[-1]
             iv5d = round(sum(series[-5:]) / len(series[-5:]), 3)
             iv1m = round(sum(series) / len(series), 3)
@@ -118,6 +134,8 @@ def build():
                 "n": meta[sym]["n"], "price": meta[sym]["price"],
                 "iv1d": iv1d, "iv5d": iv5d, "iv1m": iv1m,
                 "rv": series[-22:],          # 迷你走势用
+                "bk": bks[-22:],             # 大 bar 成交占比（机构大单代理），与 rv 同窗
+                "dates": [d for d, _, _ in rv][-22:],
                 "days": len(series),
             }
             ok += 1

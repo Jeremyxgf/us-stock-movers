@@ -354,6 +354,16 @@
       text-overflow: ellipsis;
     }
 
+    td.name a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    td.name a:hover {
+      color: var(--blue);
+      text-decoration: underline;
+    }
+
     .gain,
     .loss {
       font-weight: 750;
@@ -966,7 +976,7 @@
           <tr>
             <td class="rank">${index + 1}</td>
             <td class="symbol">${sym}</td>
-            <td class="name">${name}</td>
+            <td class="name"><a href="./stock.html?s=${sym}" target="_blank" rel="noopener" title="查看 ${sym} 筹码分布">${name}</a></td>
             <td class="${type}">${changeText}</td>
             <td class="spark">${spark}</td>
             <td>${formatPrice(Number(row.price))}</td>
