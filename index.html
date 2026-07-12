@@ -347,6 +347,15 @@
       letter-spacing: 0.02em;
     }
 
+    td.symbol a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    td.symbol a:hover {
+      text-decoration: underline;
+    }
+
     td.name {
       max-width: 320px;
       overflow: hidden;
@@ -975,7 +984,7 @@
         return `
           <tr>
             <td class="rank">${index + 1}</td>
-            <td class="symbol">${sym}</td>
+            <td class="symbol"><a href="./stock.html?s=${sym}" target="_blank" rel="noopener" title="查看 ${sym} 筹码分布">${sym}</a></td>
             <td class="name"><a href="./stock.html?s=${sym}" target="_blank" rel="noopener" title="查看 ${sym} 筹码分布">${name}</a></td>
             <td class="${type}">${changeText}</td>
             <td class="spark">${spark}</td>

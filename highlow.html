@@ -71,6 +71,8 @@
     td.rank, th.rank { width: 56px; text-align: center; }
     td.symbol, th.symbol, td.name, th.name { text-align: left; }
     td.symbol { color: var(--blue); font-weight: 800; }
+    td.symbol a { color: inherit; text-decoration: none; }
+    td.symbol a:hover { text-decoration: underline; }
     td.name { max-width: 280px; overflow: hidden; color: #30394b; text-overflow: ellipsis; }
     td.name a { color: inherit; text-decoration: none; }
     td.name a:hover { color: var(--blue); text-decoration: underline; }
@@ -294,7 +296,7 @@
       body.innerHTML = list.map((r, i) => `
         <tr>
           <td class="rank">${i + 1}</td>
-          <td class="symbol">${escapeHtml(r.s)}</td>
+          <td class="symbol"><a href="./stock.html?s=${escapeHtml(r.s)}" target="_blank" rel="noopener" title="查看筹码分布">${escapeHtml(r.s)}</a></td>
           <td class="name"><a href="./stock.html?s=${escapeHtml(r.s)}" target="_blank" rel="noopener" title="查看筹码分布">${escapeHtml(r.n || "")}</a></td>
           <td>${fmtPrice(r.price)}</td>
           <td>${fmtPrice(r.winLo)} – ${fmtPrice(r.winHi)}</td>
