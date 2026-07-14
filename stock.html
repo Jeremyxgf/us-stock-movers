@@ -33,6 +33,23 @@
     .status { min-height: 20px; margin: 0 2px 12px; color: var(--muted); font-size: 13px; }
     .status.error { color: var(--red); font-weight: 650; }
 
+    .winbar {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--line);
+      border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); font-size: 13px;
+    }
+    .winbar label { color: var(--muted); font-weight: 650; }
+    .winbar input {
+      width: 90px; min-height: 36px; border: 1px solid var(--line); border-radius: 8px;
+      padding: 6px 10px; font: inherit; font-size: 14px; background: #fbfdff; color: var(--ink);
+    }
+    .winbar input:focus { border-color: var(--blue); outline: 3px solid rgba(36,87,166,0.16); }
+    .winbar button {
+      min-height: 36px; border: 0; border-radius: 8px; padding: 0 16px;
+      background: var(--blue); color: #fff; font: inherit; font-weight: 750; cursor: pointer;
+    }
+    .winbar .hint { color: var(--muted); font-size: 12px; }
+
     .cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 0 0 14px; }
     .card { padding: 13px 15px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); }
     .card .label { color: var(--muted); font-size: 12px; }
@@ -85,6 +102,13 @@
     </header>
     <div class="status" id="status">正在加载…</div>
 
+    <form class="winbar" id="win-form">
+      <label for="win-months">统计窗口（月）</label>
+      <input id="win-months" type="number" min="1" max="60" step="1" value="12" inputmode="numeric">
+      <button type="submit">重算</button>
+      <span class="hint">默认 12 个月（1 月 ≈ 21 个交易日，最多 60 个月）。高换手股建议改短（3–6），低换手股可拉长；改后即时重算，不重新下载。</span>
+    </form>
+
     <section class="cards" aria-label="筹码指标">
       <div class="card"><div class="label">获利盘（现价下方筹码）</div><div class="value v-green" id="m-profit">-</div></div>
       <div class="card"><div class="label">套牢盘（现价上方筹码）</div><div class="value v-red" id="m-trapped">-</div></div>
@@ -95,12 +119,12 @@
 
     <section class="stage">
       <div class="panel">
-        <div class="panel-head"><strong>近 12 个月日 K 线</strong><span class="legend" id="k-note">复权价</span></div>
+        <div class="panel-head"><strong id="k-title">日 K 线</strong><span class="legend" id="k-note">复权价</span></div>
         <div id="kchart"></div>
       </div>
       <div class="panel">
         <div class="panel-head">
-          <strong>筹码分布（12 个月）</strong>
+          <strong id="chip-title">筹码分布</strong>
           <span class="legend">
             <span><span class="sw" style="background:var(--inst)"></span>机构（推断）</span>
             <span><span class="sw" style="background:var(--retail)"></span>散户（推断）</span>
@@ -127,7 +151,7 @@
     </section>
 
     <p class="note" id="method">
-      <strong>方法</strong>：筹码分布用经典换手衰减模型——把过去 252 个交易日每天的成交量按三角形分布摊到当日价格区间（峰在均价 (O+H+L+C)/4），
+      <strong>方法</strong>：筹码分布用经典换手衰减模型——把统计窗口（默认 12 个月，可在上方改 1–60 个月）内每天的成交量按三角形分布摊到当日价格区间（峰在均价 (O+H+L+C)/4），
       并按当日换手率（成交量 ÷ 流通股）衰减旧筹码，得到「当前持仓者的成本分布」（复权价）。
       <strong>机构 / 散户为推断值</strong>：美股真实逐笔成交（每笔大小）数据无法免费获得，本页用两层代理逐日估计「机构买入概率」：
       ① 量价行为特征——机构吸筹（温和放量 + 窄振幅 + 低位收高）、恐慌日低位承接为加分项；散户行为（前期大涨后高位爆量 / 跳空追高、高位长上影接盘）为减分项；
@@ -154,7 +178,7 @@
     // ---------- 数据加载 ----------
     async function fetchDaily(sym) {
       const hit = async (s) => {
-        const r = await fetch(`https://stockanalysis.com/api/symbol/s/${encodeURIComponent(s)}/history?range=1Y&period=Daily`);
+        const r = await fetch(`https://stockanalysis.com/api/symbol/s/${encodeURIComponent(s)}/history?range=5Y&period=Daily`);
         if (!r.ok) return null;
         const j = await r.json();
         return (j && j.data && j.data.length) ? j.data : null;
@@ -375,10 +399,17 @@
       els += `<line x1="${padL}" x2="${W - padR}" y1="${yP}" y2="${yP}" stroke="var(--ink)" stroke-width="1.2" stroke-dasharray="5 4"/>`;
       els += `<text x="${W - padR - 2}" y="${yP - 5}" text-anchor="end" font-size="11" font-weight="700" fill="var(--ink)">现价 ${fmt$(price)}</text>`;
       svg.innerHTML = els;
+      // 悬浮 tooltip 读这些状态（监听器只在启动时挂一次，避免重算后叠加）
+      chipState = { lo, step, inst, ret, flt, padT, plotH };
+    }
 
-      // 悬浮 tooltip（整块 SVG 上按 y 找 bin）
+    let chipState = null;
+    function initChipTooltip() {
+      const svg = $("chip-svg");
       const tip = $("chip-tip");
       svg.addEventListener("mousemove", (e) => {
+        if (!chipState) return;
+        const { lo, step, inst, ret, flt, padT, plotH } = chipState;
         const rect = svg.getBoundingClientRect();
         const my = e.clientY - rect.top;
         const k = clamp(Math.floor((1 - (my - padT) / plotH) * BINS), 0, BINS - 1);
@@ -397,66 +428,93 @@
       svg.addEventListener("mouseleave", () => { tip.style.display = "none"; });
     }
 
+    let kchart = null, kSeries = null, kVol = null;
     function renderKChart(bars) {
       if (typeof LightweightCharts === "undefined") {
         $("kchart").innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted)">图表库未能加载。</div>`;
         return;
       }
       const el = $("kchart");
-      const chart = LightweightCharts.createChart(el, {
-        width: el.clientWidth || 640, height: el.clientHeight || 440,
-        layout: { background: { color: "#ffffff" }, textColor: "#637083" },
-        grid: { vertLines: { color: "#eef1f6" }, horzLines: { color: "#eef1f6" } },
-        rightPriceScale: { borderColor: "#dfe5ee" },
-        timeScale: { borderColor: "#dfe5ee" }
-      });
-      const cs = chart.addCandlestickSeries({
-        upColor: "#087443", downColor: "#b42318",
-        wickUpColor: "#087443", wickDownColor: "#b42318", borderVisible: false
-      });
-      cs.setData(bars.map((b) => ({ time: b.t, open: b.o, high: b.h, low: b.l, close: b.c })));
-      const vol = chart.addHistogramSeries({ priceFormat: { type: "volume" }, priceScaleId: "vol" });
-      chart.priceScale("vol").applyOptions({ scaleMargins: { top: 0.84, bottom: 0 } });
-      vol.setData(bars.map((b) => ({ time: b.t, value: b.v, color: b.c >= b.o ? "rgba(8,116,67,0.35)" : "rgba(180,35,24,0.35)" })));
-      chart.timeScale().fitContent();
-      window.addEventListener("resize", () => chart.applyOptions({ width: el.clientWidth }));
+      if (!kchart) {
+        kchart = LightweightCharts.createChart(el, {
+          width: el.clientWidth || 640, height: el.clientHeight || 440,
+          layout: { background: { color: "#ffffff" }, textColor: "#637083" },
+          grid: { vertLines: { color: "#eef1f6" }, horzLines: { color: "#eef1f6" } },
+          rightPriceScale: { borderColor: "#dfe5ee" },
+          timeScale: { borderColor: "#dfe5ee" }
+        });
+        kSeries = kchart.addCandlestickSeries({
+          upColor: "#087443", downColor: "#b42318",
+          wickUpColor: "#087443", wickDownColor: "#b42318", borderVisible: false
+        });
+        kVol = kchart.addHistogramSeries({ priceFormat: { type: "volume" }, priceScaleId: "vol" });
+        kchart.priceScale("vol").applyOptions({ scaleMargins: { top: 0.84, bottom: 0 } });
+        window.addEventListener("resize", () => kchart.applyOptions({ width: el.clientWidth }));
+      }
+      kSeries.setData(bars.map((b) => ({ time: b.t, open: b.o, high: b.h, low: b.l, close: b.c })));
+      kVol.setData(bars.map((b) => ({ time: b.t, value: b.v, color: b.c >= b.o ? "rgba(8,116,67,0.35)" : "rgba(180,35,24,0.35)" })));
+      kchart.timeScale().fitContent();
     }
 
     // ---------- 主流程 ----------
+    // 一次拉 5 年日线存 fullBars；改窗口时只切片重算，不重新下载
+    let fullBars = [], gFlt = 0, gBkMap = null;
+
+    function recompute(months) {
+      const n = Math.min(fullBars.length, Math.round(months * 21));
+      const bars = fullBars.slice(-n);
+      if (bars.length < 30) { setStatus("该窗口内交易日不足 30 天，无法统计。请加大窗口。", true); return; }
+      const actualMonths = Math.round(bars.length / 21);
+
+      const last = bars[bars.length - 1];
+      const ps = instProb(bars, gBkMap);
+      const dist = chipDist(bars, gFlt, ps);
+      const a = analyze(dist, last.c, gFlt);
+
+      renderCards(a, gFlt);
+      renderConclusions(a, gFlt);
+      renderChips(dist, last.c, gFlt);
+      renderKChart(bars);
+
+      $("k-title").textContent = `日 K 线（${bars[0].t} ~ ${last.t}）`;
+      $("chip-title").textContent = `筹码分布（${actualMonths} 个月窗口）`;
+      const bkNote = gBkMap ? "已叠加最近一个月 5 分钟大单集中度。" : "该股不在最活跃 500 池内，机构/散户仅由日线量价特征推断。";
+      const short = bars.length < Math.round(months * 21) ? `（上市历史不足 ${months} 个月，实际用全部 ${bars.length} 天）` : "";
+      setStatus(`统计窗口 ${bars[0].t} ~ ${last.t}（${bars.length} 个交易日）${short}，流通盘 ${(gFlt / 1e9).toFixed(2)}B 股。${bkNote}`);
+    }
+
+    $("win-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const m = clamp(Math.round(Number($("win-months").value) || 12), 1, 60);
+      $("win-months").value = m;
+      recompute(m);
+    });
+
     (async () => {
       if (!SYM) { setStatus("缺少股票代码。请从榜单页点击公司名进入，或在地址栏加 ?s=NVDA。", true); return; }
       document.title = `${SYM} 筹码分布`;
       $("sym").textContent = SYM;
-      setStatus(`正在加载 ${SYM} 的 12 个月日线与元数据…`);
+      setStatus(`正在加载 ${SYM} 的日线与元数据…`);
+      initChipTooltip();
       try {
         const [raw, meta, bkData] = await Promise.all([fetchDaily(SYM), fetchMeta(SYM), fetchBk(SYM)]);
         if (!raw) throw new Error("拿不到该股的日线数据（代码可能不存在或已退市）");
-        const bars = prepare(raw);
-        if (bars.length < 30) throw new Error("历史数据太短（上市不足 30 个交易日），无法统计筹码分布");
+        fullBars = prepare(raw);
+        if (fullBars.length < 30) throw new Error("历史数据太短（上市不足 30 个交易日），无法统计筹码分布");
 
-        const flt = meta && (Number(meta.float) > 0 ? Number(meta.float) : Number(meta.sharesOut)) ||
-                    // 兜底：无流通盘数据时用「12月总成交量的 1/4」近似，只影响衰减速度
-                    bars.reduce((a, b) => a + b.v, 0) / 4;
+        gFlt = meta && (Number(meta.float) > 0 ? Number(meta.float) : Number(meta.sharesOut)) ||
+               // 兜底：无流通盘数据时用「12月总成交量的 1/4」近似，只影响衰减速度
+               fullBars.slice(-252).reduce((a, b) => a + b.v, 0) / 4;
         if (meta && meta.n) $("name").textContent = meta.n;
 
-        const last = bars[bars.length - 1], prev = bars[bars.length - 2];
+        const last = fullBars[fullBars.length - 1], prev = fullBars[fullBars.length - 2];
         const chg = prev ? (last.c / prev.c - 1) * 100 : 0;
         $("price").textContent = fmt$(last.c);
         $("chg").textContent = `${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%`;
         $("chg").className = `chg ${chg >= 0 ? "gain" : "loss"}`;
 
-        const bkMap = bkData ? new Map((bkData.dates || []).map((d, i) => [d, bkData.bk[i]])) : null;
-        const ps = instProb(bars, bkMap);
-        const dist = chipDist(bars, flt, ps);
-        const a = analyze(dist, last.c, flt);
-
-        renderCards(a, flt);
-        renderConclusions(a, flt);
-        renderChips(dist, last.c, flt);
-        renderKChart(bars);
-
-        const bkNote = bkMap ? "已叠加最近一个月 5 分钟大单集中度。" : "该股不在最活跃 500 池内，机构/散户仅由日线量价特征推断。";
-        setStatus(`统计窗口 ${bars[0].t} ~ ${last.t}（${bars.length} 个交易日），流通盘 ${(flt / 1e9).toFixed(2)}B 股。${bkNote}`);
+        gBkMap = bkData ? new Map((bkData.dates || []).map((d, i) => [d, bkData.bk[i]])) : null;
+        recompute(12);
       } catch (e) {
         console.error(e);
         setStatus(`加载失败：${e.message || e}`, true);
