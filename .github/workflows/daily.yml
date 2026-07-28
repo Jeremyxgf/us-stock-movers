@@ -74,6 +74,7 @@ jobs:
           cp highlow.html _site/
           cp sectors.html _site/
           cp stock.html _site/
+          cp reversal.html _site/
           cp -r data _site/
 
       - name: Setup Pages

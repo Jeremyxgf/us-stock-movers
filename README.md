@@ -25,6 +25,7 @@ StockAnalysis 的接口只返回「最近交易日」，没法查历史。所以
 | `highlow.html` / `fetch_highlow.py` / `data/highlow.json` | 创新高/新低榜：最活跃 500 只的复权日线（261 交易日），窗口 1–52 周、严格收盘口径，按区间幅度排名。 |
 | `sectors.html` / `fetch_sectors.py` / `data/sectors.json` | 板块/行业相关性 3D 星系图：市值加权组合日收益的 Pearson 相关（1M/3M/6M/1Y），红=正相关、绿=负相关，可拖拽。 |
 | `stock.html` | 个股筹码分布页（点击榜单公司名新标签页打开）：12 个月换手衰减筹码分布 + 机构/散户分层推断（量价行为 + 5 分钟大单集中度代理）。 |
+| `reversal.html` | 反转榜（复用 highlow.json）：低位反弹（X 天前处窗口底部 20% 且近 X 日涨 ≥ Y%）/ 高位回调（顶部 20% 且近 X 日跌 ≥ Y%），X/Y 可调，默认 3 天 / 10%。 |
 
 ## 本地使用
 浏览器有同源限制，直接双击打开 `index.html` 读不到本地 JSON，要起一个静态服务器：

@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>美股反转榜：低位反弹 / 高位回调</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fb; --panel: #ffffff; --ink: #172033; --muted: #637083;
+      --line: #dfe5ee; --red: #b42318; --green: #087443; --blue: #2457a6;
+      --shadow: 0 18px 48px rgba(23, 32, 51, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        linear-gradient(135deg, rgba(8,116,67,0.08), transparent 34%),
+        linear-gradient(225deg, rgba(180,35,24,0.08), transparent 38%),
+        var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.5;
+    }
+    .wrap { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 32px 0 40px; }
+    header { display: grid; gap: 12px; grid-template-columns: 1fr auto; align-items: end; margin-bottom: 18px; }
+    h1 { margin: 0 0 8px; font-size: clamp(28px, 4vw, 44px); line-height: 1.06; }
+    .subtitle { margin: 0; color: var(--muted); font-size: 15px; }
+    .backlink { color: var(--blue); text-decoration: none; font-weight: 700; font-size: 14px; white-space: nowrap; }
+    .backlink:hover { text-decoration: underline; }
+    .stamp { display: inline-flex; flex-direction: column; gap: 3px; padding: 12px 14px; border: 1px solid var(--line);
+      border-radius: 8px; background: rgba(255,255,255,0.78); box-shadow: var(--shadow); text-align: right; }
+    .stamp b { font-size: 16px; } .stamp span { color: var(--muted); font-size: 12px; }
+    .controls {
+      display: grid; grid-template-columns: auto 1fr 1fr 1fr 1fr 1fr auto; gap: 12px; align-items: end;
+      margin: 0 0 14px; padding: 16px; border: 1px solid var(--line); border-radius: 8px;
+      background: var(--panel); box-shadow: var(--shadow);
+    }
+    label { display: grid; gap: 6px; color: var(--muted); font-size: 13px; font-weight: 650; }
+    input {
+      width: 100%; min-height: 42px; border: 1px solid var(--line); border-radius: 8px;
+      padding: 9px 11px; color: var(--ink); font: inherit; font-size: 15px; background: #fbfdff;
+    }
+    input:focus { border-color: var(--blue); outline: 3px solid rgba(36,87,166,0.16); }
+    button {
+      min-height: 42px; border: 0; border-radius: 8px; padding: 0 18px;
+      background: var(--blue); color: #fff; font: inherit; font-weight: 750; cursor: pointer;
+    }
+    .seg { display: flex; }
+    .seg-btn {
+      min-height: 42px; padding: 0 16px; border: 1px solid var(--line);
+      background: #fbfdff; color: var(--muted); font-weight: 700; cursor: pointer; white-space: nowrap;
+    }
+    .seg-btn:first-child { border-radius: 8px 0 0 8px; }
+    .seg-btn:last-child { border-radius: 0 8px 8px 0; border-left: 0; }
+    .seg-btn.active-reb { border-color: var(--green); background: var(--green); color: #fff; }
+    .seg-btn.active-pb { border-color: var(--red); background: var(--red); color: #fff; }
+    .status { min-height: 20px; margin: -2px 2px 14px; color: var(--muted); font-size: 13px; }
+    .status.error { color: var(--red); font-weight: 650; }
+    .table-panel { overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); }
+    .table-head { display: flex; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--line); }
+    .table-head strong { font-size: 17px; } .table-head span { color: var(--muted); font-size: 13px; text-align: right; }
+    .scroll { overflow-x: auto; }
+    table { width: 100%; min-width: 920px; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+    th { position: sticky; top: 0; z-index: 1; background: #f9fbfe; color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; }
+    th.sortable { cursor: pointer; user-select: none; }
+    th.sortable:hover { color: var(--ink); } th.sortable.active { color: var(--blue); }
+    th .arrow { margin-left: 4px; font-size: 10px; }
+    td.rank, th.rank { width: 56px; text-align: center; }
+    td.symbol, th.symbol, td.name, th.name { text-align: left; }
+    td.symbol { color: var(--blue); font-weight: 800; }
+    td.symbol a { color: inherit; text-decoration: none; }
+    td.symbol a:hover { text-decoration: underline; }
+    td.name { max-width: 260px; overflow: hidden; color: #30394b; text-overflow: ellipsis; }
+    td.name a { color: inherit; text-decoration: none; }
+    td.name a:hover { color: var(--blue); text-decoration: underline; }
+    .gain { color: var(--green); font-weight: 750; }
+    .loss { color: var(--red); font-weight: 750; }
+    td.spark { width: 132px; padding-top: 6px; padding-bottom: 6px; }
+    .spark-empty { color: var(--muted); }
+    tbody tr:hover { background: #f8fbff; }
+    tbody tr:last-child td { border-bottom: 0; }
+    .empty { color: var(--muted); text-align: center; }
+    .note { margin: 14px 2px 0; color: var(--muted); font-size: 13px; }
+    .note a { color: var(--blue); text-decoration: none; font-weight: 650; }
+    .note strong { color: var(--ink); }
+    @media (max-width: 760px) { header, .controls { grid-template-columns: 1fr; } .stamp { text-align: left; } }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <div>
+        <h1>反转榜：低位反弹 / 高位回调</h1>
+        <p class="subtitle">在创新低/新高基础上找拐点：跌到低位但近期已反弹的（抄底候选），或涨到高位但近期在回调的（见顶候选）。
+          <a class="backlink" href="./index.html">← 返回涨跌幅榜单</a></p>
+      </div>
+      <div class="stamp" aria-label="数据状态">
+        <b id="as-of">加载中…</b>
+        <span>StockAnalysis 日线（每日快照）</span>
+      </div>
+    </header>
+
+    <form class="controls" id="query-form">
+      <label>
+        榜单
+        <span class="seg">
+          <button type="button" class="seg-btn active-reb" id="btn-reb">低位反弹</button>
+          <button type="button" class="seg-btn" id="btn-pb">高位回调</button>
+        </span>
+      </label>
+      <label>
+        回看窗口（周，定义高/低位）
+        <input id="weeks" type="number" min="2" max="52" step="1" value="12" inputmode="numeric">
+      </label>
+      <label>
+        最近 X 天（拉升/回调）
+        <input id="days" type="number" min="1" max="30" step="1" value="3" inputmode="numeric">
+      </label>
+      <label>
+        幅度 Y ≥（%）
+        <input id="pct" type="number" min="1" max="200" step="0.5" value="10" inputmode="decimal">
+      </label>
+      <label>
+        Top 数量
+        <input id="top-count" type="number" min="1" max="500" step="1" value="30" inputmode="numeric">
+      </label>
+      <label>
+        最低市值（B，0=不限）
+        <input id="min-cap" type="number" min="0" max="10000" step="0.1" value="2" inputmode="decimal">
+      </label>
+      <button type="submit">查询</button>
+    </form>
+    <div class="status" id="status">准备加载。</div>
+
+    <section class="table-panel" id="reb-panel">
+      <div class="table-head"><strong id="reb-title">低位反弹榜</strong><span id="reb-meta">等待加载。</span></div>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th class="rank">排名</th>
+              <th class="symbol">代码</th>
+              <th class="name">公司</th>
+              <th class="sortable" data-key="price">现价<span class="arrow"></span></th>
+              <th class="sortable" id="reb-move-th" data-key="move">近X日涨幅<span class="arrow"></span></th>
+              <th class="sortable" data-key="posBefore">反弹前位置<span class="arrow"></span></th>
+              <th class="sortable" data-key="distExt">距窗口低点<span class="arrow"></span></th>
+              <th class="sortable" data-key="mc">市值<span class="arrow"></span></th>
+              <th class="spark">窗口走势</th>
+            </tr>
+          </thead>
+          <tbody id="reb-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="table-panel" id="pb-panel" style="display:none">
+      <div class="table-head"><strong id="pb-title">高位回调榜</strong><span id="pb-meta">等待加载。</span></div>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th class="rank">排名</th>
+              <th class="symbol">代码</th>
+              <th class="name">公司</th>
+              <th class="sortable" data-key="price">现价<span class="arrow"></span></th>
+              <th class="sortable" id="pb-move-th" data-key="move">近X日跌幅<span class="arrow"></span></th>
+              <th class="sortable" data-key="posBefore">回调前位置<span class="arrow"></span></th>
+              <th class="sortable" data-key="distExt">距窗口高点<span class="arrow"></span></th>
+              <th class="sortable" data-key="mc">市值<span class="arrow"></span></th>
+              <th class="spark">窗口走势</th>
+            </tr>
+          </thead>
+          <tbody id="pb-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <p class="note">
+      <strong>低位反弹</strong>：在回看窗口内，<strong>X 天前</strong>股价处于窗口区间的<strong>底部 20%</strong>（即刚创/接近新低），
+      而最近 <strong>X 天收盘涨幅 ≥ Y%</strong>（已从底部反弹）。<strong>高位回调</strong>反之：X 天前处于窗口<strong>顶部 20%</strong>（刚创/接近新高），最近 X 天跌幅 ≥ Y%。
+      「前位置」= X 天前收盘在窗口 [最低,最高] 收盘区间中的百分位（0%=最低、100%=最高）；「距窗口低/高点」= 现价相对窗口收盘极值的距离；默认按近 X 日幅度排序。
+      口径均为收盘价、复权；窗口/涨跌以交易日计。股票池为按成交额最活跃约 500 只。反转是概率性形态，<strong>可能是真反转，也可能是下跌中继/见顶后反抽</strong>，仅供参考，不构成投资建议。
+    </p>
+  </main>
+
+  <script>
+    const DATA_URL = "./data/highlow.json";
+    const els = {
+      form: document.getElementById("query-form"),
+      weeks: document.getElementById("weeks"),
+      days: document.getElementById("days"),
+      pct: document.getElementById("pct"),
+      topCount: document.getElementById("top-count"),
+      minCap: document.getElementById("min-cap"),
+      status: document.getElementById("status"),
+      asOf: document.getElementById("as-of"),
+      btnReb: document.getElementById("btn-reb"),
+      btnPb: document.getElementById("btn-pb"),
+      rebPanel: document.getElementById("reb-panel"),
+      pbPanel: document.getElementById("pb-panel"),
+      rebTitle: document.getElementById("reb-title"),
+      pbTitle: document.getElementById("pb-title"),
+      rebMeta: document.getElementById("reb-meta"),
+      pbMeta: document.getElementById("pb-meta"),
+      rebBody: document.getElementById("reb-body"),
+      pbBody: document.getElementById("pb-body"),
+      rebMoveTh: document.getElementById("reb-move-th"),
+      pbMoveTh: document.getElementById("pb-move-th"),
+    };
+    const LABELS = { price: "现价", move: "近X日幅度", posBefore: "前位置", distExt: "距窗口极值", mc: "市值" };
+    const POS_EDGE = 0.20;   // "底部/顶部 20%" 的位置阈值
+    let data = null;
+    let board = "reb";       // reb=低位反弹（默认） / pb=高位回调
+    let sortKey = "move", sortDir = "desc";
+
+    const clampInt = (v, lo, hi, dflt) => {
+      const n = Math.floor(Number(v));
+      return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt;
+    };
+    const escapeHtml = (v) => String(v).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+    const fmtPrice = (v) => v == null ? "-" : (v < 1 ? `$${(+v).toFixed(4)}` : `$${(+v).toFixed(2)}`);
+    const fmtPct = (v, signed = true) => {
+      if (v == null || !Number.isFinite(+v)) return "-";
+      const s = signed && v > 0 ? "+" : "";
+      return `${s}${(+v).toFixed(2)}%`;
+    };
+    const fmtCap = (v) => {
+      if (v == null || !(+v > 0)) return "-";
+      const a = Math.abs(v);
+      if (a >= 1e12) return `$${(v/1e12).toFixed(2)}T`;
+      if (a >= 1e9) return `$${(v/1e9).toFixed(2)}B`;
+      if (a >= 1e6) return `$${(v/1e6).toFixed(2)}M`;
+      return `$${Math.round(v).toLocaleString("en-US")}`;
+    };
+
+    function sparklineSVG(closes) {
+      const w = 120, h = 26, pad = 3;
+      if (!closes || closes.length < 2) return `<span class="spark-empty">–</span>`;
+      const min = Math.min(...closes), max = Math.max(...closes), span = max - min || 1;
+      const step = (w - pad * 2) / (closes.length - 1);
+      const pts = closes.map((c, i) => `${(pad + i * step).toFixed(1)},${(pad + (h - pad * 2) * (1 - (c - min) / span)).toFixed(1)}`).join(" ");
+      const color = closes[closes.length - 1] >= closes[0] ? "var(--green)" : "var(--red)";
+      return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><polyline fill="none" stroke="${color}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" points="${pts}"></polyline></svg>`;
+    }
+
+    function sortRows(list, key, dir) {
+      const f = dir === "asc" ? 1 : -1;
+      return list.slice().sort((a, b) => {
+        const av = Number(a[key]), bv = Number(b[key]);
+        const an = !Number.isFinite(av), bn = !Number.isFinite(bv);
+        if (an && bn) return 0; if (an) return 1; if (bn) return -1;
+        return (av - bv) * f;
+      });
+    }
+
+    function updateIndicators() {
+      document.querySelectorAll(".table-panel").forEach((p) => {
+        if (p.style.display === "none") return;
+        p.querySelectorAll("th.sortable").forEach((th) => {
+          const active = th.dataset.key === sortKey;
+          th.classList.toggle("active", active);
+          const arrow = th.querySelector(".arrow");
+          if (arrow) arrow.textContent = active ? (sortDir === "asc" ? "▲" : "▼") : "";
+        });
+      });
+    }
+
+    // 逐股计算：X 天前的位置 + 最近 X 天涨跌幅；筛出"低位已反弹"或"高位在回调"
+    function computeLists(weeks, X, Y, minCapDollars) {
+      const D = weeks * 5;
+      const reb = [], pb = [];
+      for (const [s, v] of Object.entries(data.stocks)) {
+        const { c } = v;
+        if (c.length < D + 1 || c.length < X + 1) continue;
+        if (minCapDollars > 0 && !(Number(v.mc) >= minCapDollars)) continue;
+        const winC = c.slice(-D);
+        const winLo = Math.min(...winC), winHi = Math.max(...winC), range = winHi - winLo;
+        const now = c[c.length - 1];
+        const start = c[c.length - 1 - X];              // X 天前收盘
+        if (!(start > 0) || range <= 0) continue;
+        const move = (now / start - 1) * 100;           // 最近 X 天收盘涨跌幅
+        const posBefore = (start - winLo) / range * 100; // X 天前在窗口收盘区间的位置 %
+        const common = { s, n: v.n, mc: v.mc, price: now, move, posBefore, spark: winC };
+        if (move >= Y && posBefore <= POS_EDGE * 100) {
+          reb.push({ ...common, distExt: (now / winLo - 1) * 100 });   // 距窗口低点
+        } else if (move <= -Y && posBefore >= (1 - POS_EDGE) * 100) {
+          pb.push({ ...common, distExt: (now / winHi - 1) * 100 });    // 距窗口高点
+        }
+      }
+      return { reb, pb };
+    }
+
+    function renderRows(list, body, isReb) {
+      if (!list.length) {
+        body.innerHTML = `<tr><td class="empty" colspan="9">没有符合条件的股票（可放宽 Y% 或调整窗口/天数）。</td></tr>`;
+        return;
+      }
+      body.innerHTML = list.map((r, i) => `
+        <tr>
+          <td class="rank">${i + 1}</td>
+          <td class="symbol"><a href="./stock.html?s=${escapeHtml(r.s)}" target="_blank" rel="noopener" title="查看筹码分布">${escapeHtml(r.s)}</a></td>
+          <td class="name"><a href="./stock.html?s=${escapeHtml(r.s)}" target="_blank" rel="noopener" title="查看筹码分布">${escapeHtml(r.n || "")}</a></td>
+          <td>${fmtPrice(r.price)}</td>
+          <td class="${isReb ? "gain" : "loss"}">${fmtPct(r.move)}</td>
+          <td>${r.posBefore.toFixed(0)}%</td>
+          <td class="${isReb ? "gain" : "loss"}">${fmtPct(r.distExt)}</td>
+          <td>${fmtCap(r.mc)}</td>
+          <td class="spark">${sparklineSVG(r.spark)}</td>
+        </tr>`).join("");
+    }
+
+    function render() {
+      if (!data) return;
+      const weeks = clampInt(els.weeks.value, 2, 52, 12);
+      const X = clampInt(els.days.value, 1, 30, 3);
+      const Y = Math.max(0.1, Number(els.pct.value) || 10);
+      const topN = clampInt(els.topCount.value, 1, 500, 30);
+      const minCapB = Math.max(0, Number(els.minCap.value) || 0);
+      els.weeks.value = weeks; els.days.value = X; els.pct.value = Y; els.topCount.value = topN;
+
+      const { reb, pb } = computeLists(weeks, X, Y, minCapB * 1e9);
+      const label = LABELS[sortKey] || sortKey;
+      els.rebMoveTh.firstChild.textContent = `近${X}日涨幅`;
+      els.pbMoveTh.firstChild.textContent = `近${X}日跌幅`;
+
+      els.btnReb.className = "seg-btn" + (board === "reb" ? " active-reb" : "");
+      els.btnPb.className = "seg-btn" + (board === "pb" ? " active-pb" : "");
+      els.rebPanel.style.display = board === "reb" ? "" : "none";
+      els.pbPanel.style.display = board === "pb" ? "" : "none";
+
+      if (board === "reb") {
+        const list = sortRows(reb, sortKey, sortDir).slice(0, topN);
+        renderRows(list, els.rebBody, true);
+        els.rebTitle.textContent = `低位反弹榜 Top ${topN}`;
+        els.rebMeta.textContent = `${weeks} 周窗口内、X 天前处底部 ${POS_EDGE * 100}% 且近 ${X} 日反弹 ≥ ${Y}%：共 ${reb.length} 只，显示 ${list.length}，按${label}排序。`;
+      } else {
+        const list = sortRows(pb, sortKey, sortDir === "desc" && sortKey === "move" ? "asc" : sortDir).slice(0, topN);
+        renderRows(list, els.pbBody, false);
+        els.pbTitle.textContent = `高位回调榜 Top ${topN}`;
+        els.pbMeta.textContent = `${weeks} 周窗口内、X 天前处顶部 ${POS_EDGE * 100}% 且近 ${X} 日回调 ≥ ${Y}%：共 ${pb.length} 只，显示 ${list.length}，按${label}排序。`;
+      }
+      els.status.textContent = `交易日 ${data.asOf}，股票池 ${Object.keys(data.stocks).length} 只：满足条件 反弹 ${reb.length} 只 / 回调 ${pb.length} 只。`;
+      updateIndicators();
+    }
+
+    document.querySelectorAll("th.sortable").forEach((th) => {
+      th.addEventListener("click", () => {
+        const key = th.dataset.key;
+        if (sortKey === key) sortDir = sortDir === "asc" ? "desc" : "asc";
+        else { sortKey = key; sortDir = key === "move" && board === "pb" ? "asc" : "desc"; }
+        render();
+      });
+    });
+    els.btnReb.addEventListener("click", () => { board = "reb"; sortKey = "move"; sortDir = "desc"; render(); });
+    els.btnPb.addEventListener("click", () => { board = "pb"; sortKey = "move"; sortDir = "asc"; render(); });
+    els.form.addEventListener("submit", (e) => { e.preventDefault(); render(); });
+
+    (async () => {
+      els.status.textContent = "正在加载 highlow.json…";
+      try {
+        const res = await fetch(DATA_URL, { cache: "no-cache" });
+        if (!res.ok) throw new Error(`加载失败（${res.status}）。是否已运行 fetch_highlow.py？`);
+        data = await res.json();
+        els.asOf.textContent = data.asOf || "—";
+        render();
+      } catch (e) {
+        console.error(e);
+        els.status.textContent = `加载失败：${e.message || e}`;
+        els.status.classList.add("error");
+      }
+    })();
+  </script>
+</body>
+</html>
