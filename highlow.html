@@ -32,7 +32,7 @@
       border-radius: 8px; background: rgba(255,255,255,0.78); box-shadow: var(--shadow); text-align: right; }
     .stamp b { font-size: 16px; } .stamp span { color: var(--muted); font-size: 12px; }
     .controls {
-      display: grid; grid-template-columns: auto 1fr 1fr 1fr auto; gap: 14px; align-items: end;
+      display: grid; grid-template-columns: auto 1fr 1fr 1fr 1fr auto; gap: 14px; align-items: end;
       margin: 0 0 14px; padding: 16px; border: 1px solid var(--line); border-radius: 8px;
       background: var(--panel); box-shadow: var(--shadow);
     }
@@ -115,6 +115,10 @@
         <input id="weeks" type="number" min="1" max="52" step="1" value="4" inputmode="numeric">
       </label>
       <label>
+        截止日期（窗口结束日）
+        <input id="as-of-date" type="date">
+      </label>
+      <label>
         Top 数量
         <input id="top-count" type="number" min="1" max="500" step="1" value="30" inputmode="numeric">
       </label>
@@ -195,6 +199,7 @@
       weeks: document.getElementById("weeks"),
       topCount: document.getElementById("top-count"),
       minCap: document.getElementById("min-cap"),
+      asOfDate: document.getElementById("as-of-date"),
       status: document.getElementById("status"),
       asOf: document.getElementById("as-of"),
       highTitle: document.getElementById("high-title"),
@@ -263,19 +268,35 @@
       });
     }
 
-    // 对每只股票按窗口 D=5W 个交易日现算指标；不满窗口（<D+1 天）不参与
-    function computeLists(weeks, minCapDollars) {
+    // 选定截止日期 → 从数据末尾要裁掉多少个交易日（endOff）。
+    // 所选日期非交易日时，就近取 ≤ 该日期的最近交易日。
+    function endOffFromDate(dateStr) {
+      const cal = data.dates || [];
+      if (!cal.length) return 0;
+      if (!dateStr) return 0;
+      let idx = -1;
+      for (let i = 0; i < cal.length; i++) { if (cal[i] <= dateStr) idx = i; else break; }
+      if (idx < 0) idx = 0;
+      return (cal.length - 1) - idx;
+    }
+
+    // 对每只股票按 "截止日往前 D=5W 个交易日" 现算指标；截止日时上市不足窗口的不参与
+    function computeLists(weeks, minCapDollars, endOff) {
       const D = weeks * 5;
       const cal = data.dates || [];
-      const baseDate = cal.length > D ? cal[cal.length - D - 1] : null;   // 区间涨跌幅的基准收盘日
+      const endIdx = cal.length - 1 - endOff;                    // 截止日在日历里的下标
+      const baseDate = endIdx - D >= 0 ? cal[endIdx - D] : null; // 区间涨跌幅的基准收盘日
       const highs = [], lows = [];
       for (const [s, v] of Object.entries(data.stocks)) {
         const { c, h, l } = v;
-        if (c.length < D + 1) continue;
+        const asofIdx = c.length - 1 - endOff;                   // 该股在截止日的下标（数组尾部对齐日历）
+        if (asofIdx < D) continue;                               // 截止日时该股上市不足窗口（或尚未上市）
         if (minCapDollars > 0 && !(Number(v.mc) >= minCapDollars)) continue;
-        const winC = c.slice(-D), winH = h.slice(-D), winL = l.slice(-D);
-        const today = c[c.length - 1];
-        const base = c[c.length - D - 1];
+        const winC = c.slice(asofIdx - D + 1, asofIdx + 1);
+        const winH = h.slice(asofIdx - D + 1, asofIdx + 1);
+        const winL = l.slice(asofIdx - D + 1, asofIdx + 1);
+        const today = c[asofIdx];
+        const base = c[asofIdx - D];
         const chg = base > 0 ? (today / base - 1) * 100 : null;
         const winHi = Math.max(...winH), winLo = Math.min(...winL);   // 窗口内盘中极值
         const common = { s, n: v.n, mc: v.mc, price: today, chg, spark: winC, winHi, winLo, baseDate };
@@ -313,13 +334,15 @@
       const topN = clampInt(els.topCount.value, 1, 500, 30);
       const minCapB = Math.max(0, Number(els.minCap.value) || 0);
       els.weeks.value = weeks; els.topCount.value = topN;
-      const { highs, lows } = computeLists(weeks, minCapB * 1e9);
+      const endOff = endOffFromDate(els.asOfDate.value);
+      const { highs, lows } = computeLists(weeks, minCapB * 1e9, endOff);
 
       // 窗口日期与起算日（同窗口下全市场一致），显示在榜单标题行
       const cal = data.dates || [];
       const D = weeks * 5;
-      const rangeText = cal.length > D
-        ? `窗口 ${cal[cal.length - D]} → ${cal[cal.length - 1]} · 起算日 ${cal[cal.length - D - 1]} · `
+      const endIdx = cal.length - 1 - endOff;
+      const rangeText = endIdx - D >= 0
+        ? `窗口 ${cal[endIdx - D + 1]} → ${cal[endIdx]} · 起算日 ${cal[endIdx - D]} · `
         : "";
       const label = LABELS[sortKey] || sortKey;
 
@@ -343,7 +366,9 @@
         els.lowMeta.textContent = `${rangeText}共 ${lows.length} 只创新低，显示 ${lo.length} 条，按${label}排序。`;
       }
 
-      els.status.textContent = `交易日 ${data.asOf}，股票池 ${Object.keys(data.stocks).length} 只：${weeks} 周（${D} 交易日）窗口内 ${highs.length} 只创新高、${lows.length} 只创新低。`;
+      const asOfShown = endIdx >= 0 ? cal[endIdx] : data.asOf;
+      const latestTag = endOff > 0 ? `（历史回溯，最新数据止于 ${data.asOf}）` : "";
+      els.status.textContent = `截止 ${asOfShown}${latestTag}，股票池 ${Object.keys(data.stocks).length} 只：${weeks} 周（${D} 交易日）窗口内 ${highs.length} 只创新高、${lows.length} 只创新低。`;
       updateIndicators();
     }
 
@@ -354,6 +379,13 @@
         if (!res.ok) throw new Error(`加载失败（${res.status}）。是否已运行 fetch_highlow.py？`);
         data = await res.json();
         els.asOf.textContent = data.asOf || "—";
+        // 初始化截止日期选择器：默认最新、范围限定在已有交易日历内
+        const cal = data.dates || [];
+        if (cal.length) {
+          els.asOfDate.min = cal[0];
+          els.asOfDate.max = cal[cal.length - 1];
+          els.asOfDate.value = cal[cal.length - 1];
+        }
         render();
       } catch (e) {
         console.error(e);
@@ -374,6 +406,7 @@
     });
     els.btnLow.addEventListener("click", () => { board = "low"; render(); });
     els.btnHigh.addEventListener("click", () => { board = "high"; render(); });
+    els.asOfDate.addEventListener("change", () => render());
     els.form.addEventListener("submit", (e) => { e.preventDefault(); render(); });
     load();
   </script>
