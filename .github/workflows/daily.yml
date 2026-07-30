@@ -53,10 +53,19 @@ jobs:
         if: github.event_name != 'push'
         run: python3 fetch_sectors.py
 
-      # A 股快照：只在 08:00 UTC 的 CN 定时任务或手动触发时跑（此时北京日期=交易日）
+      # A 股：只在 08:00 UTC 的 CN 定时任务或手动触发时跑（此时北京日期=交易日）
+      # 数据源均为新浪/腾讯（抗封）；highlow/intraday 依赖 snapshot，须在其后。
       - name: Fetch A-share snapshot
         if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && github.event.schedule == '0 8 * * 1-5')
         run: python3 cn_fetch_snapshot.py
+
+      - name: Fetch A-share high/low history
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && github.event.schedule == '0 8 * * 1-5')
+        run: python3 cn_fetch_highlow.py
+
+      - name: Fetch A-share intraday
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && github.event.schedule == '0 8 * * 1-5')
+        run: python3 cn_fetch_intraday.py
 
       - name: Commit data if changed
         if: github.event_name != 'push'
@@ -82,6 +91,10 @@ jobs:
           cp stock.html _site/
           cp reversal.html _site/
           cp cn-index.html _site/
+          cp cn-highlow.html _site/
+          cp cn-reversal.html _site/
+          cp cn-stock.html _site/
+          cp cn-intraday.html _site/
           cp -r data _site/
 
       - name: Setup Pages

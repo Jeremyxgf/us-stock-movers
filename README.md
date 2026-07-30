@@ -27,6 +27,16 @@ StockAnalysis 的接口只返回「最近交易日」，没法查历史。所以
 | `stock.html` | 个股筹码分布页（点击榜单公司名新标签页打开）：12 个月换手衰减筹码分布 + 机构/散户分层推断（量价行为 + 5 分钟大单集中度代理）。 |
 | `reversal.html` | 反转榜（复用 highlow.json）：低位反弹（X 天前处窗口底部 20% 且近 X 日涨 ≥ Y%）/ 高位回调（顶部 20% 且近 X 日跌 ≥ Y%），X/Y 可调，默认 3 天 / 10%。 |
 
+### A 股版（`cn-*` 前缀，数据在 `data/cn/`）
+数据源改用**新浪/腾讯**（东财 clist 批量翻页会封 IP）。抓取在每日 08:00 UTC（北京 16:00，A 股收盘后）的 CI 定时段跑，与美股共用一套 Actions + Pages。
+
+| 文件 | 作用 |
+|---|---|
+| `cn-index.html` / `cn_fetch_snapshot.py` | A股涨跌幅榜：新浪活跃股池约 1000 只，¥ 货币、换手率原生、**涨跌停封板标记**、K 线弹窗用东财日 K。 |
+| `cn-highlow.html` / `cn-reversal.html` / `cn_fetch_highlow.py` | 创新高低 + 反转：腾讯前复权日线 498 只 261 交易日 → `data/cn/highlow.json`。 |
+| `cn-stock.html` | 个股筹码分布：腾讯前复权日 K + 新浪快照流通市值算流通股，机构/散户推断（可另参考龙虎榜/北向）。 |
+| `cn-intraday.html` / `cn_fetch_intraday.py` | 日内波动率：新浪 5 分钟 K，活跃 500 只，1D/5D/1M 排名。 |
+
 ## 本地使用
 浏览器有同源限制，直接双击打开 `index.html` 读不到本地 JSON，要起一个静态服务器：
 ```bash
