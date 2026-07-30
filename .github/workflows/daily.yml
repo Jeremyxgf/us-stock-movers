@@ -2,9 +2,10 @@ name: Daily snapshot & deploy
 
 on:
   schedule:
-    # 22:30 UTC，周一至周五 —— 美股收盘（20:00/21:00 UTC）后约 1.5-2.5 小时，
-    # 此时 StockAnalysis 的“最近交易日”已结算为当天。GitHub 定时任务可能延迟几分钟，无妨。
+    # 22:30 UTC，周一至周五 —— 美股收盘（20:00/21:00 UTC）后约 1.5-2.5 小时。
     - cron: "30 22 * * 1-5"
+    # 08:00 UTC = 北京 16:00，A 股 15:00 收盘后 —— 抓 A 股快照（此时北京日期即交易日）。
+    - cron: "0 8 * * 1-5"
   workflow_dispatch: {}          # 也可在 Actions 页手动触发
   push:
     branches: [main]
@@ -52,6 +53,11 @@ jobs:
         if: github.event_name != 'push'
         run: python3 fetch_sectors.py
 
+      # A 股快照：只在 08:00 UTC 的 CN 定时任务或手动触发时跑（此时北京日期=交易日）
+      - name: Fetch A-share snapshot
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && github.event.schedule == '0 8 * * 1-5')
+        run: python3 cn_fetch_snapshot.py
+
       - name: Commit data if changed
         if: github.event_name != 'push'
         run: |
@@ -75,6 +81,7 @@ jobs:
           cp sectors.html _site/
           cp stock.html _site/
           cp reversal.html _site/
+          cp cn-index.html _site/
           cp -r data _site/
 
       - name: Setup Pages

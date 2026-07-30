@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>美股涨跌幅动态榜单</title>
+  <title>A股涨跌幅动态榜单</title>
   <style>
     :root {
       color-scheme: light;
@@ -378,6 +378,20 @@
       font-weight: 750;
     }
 
+    .limit-badge {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 800;
+      color: #fff;
+      vertical-align: 1px;
+    }
+
+    .limit-badge.up { background: var(--red); }
+    .limit-badge.down { background: var(--green); }
+
     tbody tr:hover {
       background: #f8fbff;
     }
@@ -595,17 +609,13 @@
   <main class="wrap">
     <header>
       <div>
-        <h1>美股涨跌幅动态榜单</h1>
-        <p class="subtitle">设置交易日期、榜单数量与最低市值；可按涨跌幅/成交额/换手率/市值排序，或点击表头任意列重排。
-          <a href="./intraday.html" style="color:var(--blue);text-decoration:none;font-weight:700;white-space:nowrap">日内波动率排名 →</a>
-          <a href="./highlow.html" style="color:var(--blue);text-decoration:none;font-weight:700;white-space:nowrap">创新高/新低榜 →</a>
-          <a href="./reversal.html" style="color:var(--blue);text-decoration:none;font-weight:700;white-space:nowrap">反转榜(反弹/回调) →</a>
-          <a href="./sectors.html" style="color:var(--blue);text-decoration:none;font-weight:700;white-space:nowrap">板块相关性星系 →</a>
-          <a href="./cn-index.html" style="color:var(--red);text-decoration:none;font-weight:700;white-space:nowrap">切换到 A股 →</a></p>
+        <h1>A股涨跌幅动态榜单</h1>
+        <p class="subtitle">活跃股池（按成交额约前 1000 只）。可按涨跌幅/成交额/换手率/市值排序，点击表头任意列重排；涨跌停显示封板标记。
+          <a href="./index.html" style="color:var(--blue);text-decoration:none;font-weight:700;white-space:nowrap">切换到美股 →</a></p>
       </div>
       <div class="stamp" aria-label="数据状态">
         <b id="trade-date">正在查询</b>
-        <span id="source-label">StockAnalysis 每日快照</span>
+        <span id="source-label">新浪 A股活跃股池 每日快照</span>
       </div>
     </header>
 
@@ -622,8 +632,8 @@
         <input id="top-count" type="number" min="1" max="100" step="1" value="30" inputmode="numeric">
       </label>
       <label>
-        最低市值（十亿美元 / B）
-        <input id="min-cap" type="number" min="0" max="10000" step="0.1" value="2" inputmode="decimal">
+        最低市值（亿元）
+        <input id="min-cap" type="number" min="0" max="100000" step="1" value="0" inputmode="decimal">
       </label>
       <label>
         排序依据
@@ -717,12 +727,11 @@
     </section>
 
     <p class="note">
-      数据源：<a href="https://stockanalysis.com/">StockAnalysis</a> 全市场每日快照。由 <code>fetch_snapshot.py</code> 每个交易日抓一次全市场（约 5500+ 只）存入 <code>data/&lt;日期&gt;.json</code>，
+      数据源：<a href="https://finance.sina.com.cn/">新浪财经</a> 沪深A股按成交额排序的活跃股池（约前 1000 只）。由 <code>cn_fetch_snapshot.py</code> 每个交易日收盘后抓一次存入 <code>data/cn/&lt;日期&gt;.json</code>，
       网页只读本地快照、在浏览器里按 Top 数量与最低市值过滤排名。<strong>历史从开始采集那天起逐日积累</strong>，更早的日期没有数据。
-      用「排序依据」可在涨/跌双榜与单项总榜（成交额/换手率/波动率/市值）间切换，点击任意表头也可重排。
-      换手率 = 成交量 ÷ 流通股（StockAnalysis 原生 float；个别 float 异常的股票回退用总股本）。
-      「近20日」为收盘价迷你走势图，<strong>点击可弹出完整 K 线图</strong>（实时 OHLC 来自 StockAnalysis）。
-      「波动率」为对数收益的年化历史波动率（悬浮看 5/10/30 日），其 <strong>0–100 指数是全市场百分位</strong>；波动率/指数均为「截至最新交易日」口径。本页仅供参考，不构成投资建议。
+      用「排序依据」可在涨/跌双榜与单项总榜（成交额/换手率/波动率/市值）间切换，点击任意表头也可重排。<strong>封涨停/封跌停</strong>会在涨跌幅旁标记（ST±5%、创业板/科创板±20%、北交所±30%、其余±10%）。
+      换手率为新浪原生字段（成交量 ÷ 流通股）。「近20日」为收盘价迷你走势图，<strong>点击可弹出完整 K 线图</strong>（实时 OHLC 来自东方财富，前复权）。
+      「波动率」为对数收益的年化历史波动率（悬浮看 5/10/30 日），其 <strong>0–100 指数是活跃股池百分位</strong>；均为「截至最新交易日」口径。本页仅供参考，不构成投资建议。
     </p>
   </main>
 
@@ -751,7 +760,7 @@
     //   data/manifest.json     —— 可用交易日清单
     //   data/<日期>.json        —— 当天全市场快照（对象数组）
     // 全部同源静态文件，无需 API key、无跨域问题。
-    const DATA_BASE = "./data";
+    const DATA_BASE = "./data/cn";
 
     const els = {
       form: document.getElementById("query-form"),
@@ -849,19 +858,12 @@
 
     // 给每一行补上换手率（成交量 / 流通股，沿用 StockAnalysis 原生 float 字段）
     function withTurnover(rows) {
-      return rows.map((row) => {
-        let shares = Number(row.float);
-        const sharesOut = Number(row.sharesOut);
-        // 个别双重股权股票（如 BRK.B）的 float 字段异常偏小，会算出离谱的换手率；
-        // 若 float 不存在或明显小于总股本的 1%，视为不可信，改用总股本。
-        if (!(shares > 0) || (sharesOut > 0 && shares < sharesOut * 0.01)) {
-          shares = sharesOut;
-        }
-        return {
-          ...row,
-          turnoverRate: shares > 0 ? Number(row.volume) / shares : null
-        };
-      });
+      // A 股快照的 turnover 已是换手率百分数（如 6.24），转成小数以适配 formatPercent(×100)
+      return rows.map((row) => ({
+        ...row,
+        turnoverRate: (row.turnover != null && Number.isFinite(Number(row.turnover)))
+          ? Number(row.turnover) / 100 : null
+      }));
     }
 
     // 把 history.json 的走势/波动率并到当前行；走势按所选日期截断（选历史日不"看未来"）
@@ -913,16 +915,16 @@
     }
 
     function formatPrice(value) {
-      return value < 1 ? `$${value.toFixed(4)}` : `$${value.toFixed(2)}`;
+      return `¥${value.toFixed(2)}`;
     }
 
+    // A 股金额用 万/亿/万亿 单位
     function formatCompact(value, money = false) {
-      const prefix = money ? "$" : "";
+      const prefix = money ? "¥" : "";
       const abs = Math.abs(value);
-      if (abs >= 1e12) return `${prefix}${(value / 1e12).toFixed(2)}T`;
-      if (abs >= 1e9) return `${prefix}${(value / 1e9).toFixed(2)}B`;
-      if (abs >= 1e6) return `${prefix}${(value / 1e6).toFixed(2)}M`;
-      if (abs >= 1e3) return `${prefix}${(value / 1e3).toFixed(2)}K`;
+      if (abs >= 1e12) return `${prefix}${(value / 1e12).toFixed(2)}万亿`;
+      if (abs >= 1e8) return `${prefix}${(value / 1e8).toFixed(2)}亿`;
+      if (abs >= 1e4) return `${prefix}${(value / 1e4).toFixed(2)}万`;
       return `${prefix}${Math.round(value).toLocaleString("en-US")}`;
     }
 
@@ -977,7 +979,9 @@
       body.innerHTML = rows.map((row, index) => {
         const type = row.change >= 0 ? "gain" : "loss";
         const sign = row.change > 0 ? "+" : "";
-        const changeText = `${sign}${Number(row.change).toFixed(2)}%`;
+        const badge = row.limit === 1 ? `<span class="limit-badge up">封涨停</span>`
+          : row.limit === -1 ? `<span class="limit-badge down">封跌停</span>` : "";
+        const changeText = `${sign}${Number(row.change).toFixed(2)}%${badge}`;
         const sym = escapeHtml(row.s);
         const name = escapeHtml(row.n);
         const spark = row.sparkCloses && row.sparkCloses.length >= 2
@@ -986,8 +990,8 @@
         return `
           <tr>
             <td class="rank">${index + 1}</td>
-            <td class="symbol"><a href="./stock.html?s=${sym}" target="_blank" rel="noopener" title="查看 ${sym} 筹码分布">${sym}</a></td>
-            <td class="name"><a href="./stock.html?s=${sym}" target="_blank" rel="noopener" title="查看 ${sym} 筹码分布">${name}</a></td>
+            <td class="symbol"><a href="./cn-stock.html?s=${sym}" target="_blank" rel="noopener" title="查看 ${sym} 筹码分布">${sym}</a></td>
+            <td class="name"><a href="./cn-stock.html?s=${sym}" target="_blank" rel="noopener" title="查看 ${sym} 筹码分布">${name}</a></td>
             <td class="${type}">${changeText}</td>
             <td class="spark">${spark}</td>
             <td>${formatPrice(Number(row.price))}</td>
@@ -1068,7 +1072,7 @@
       if (!currentRows.length) return;
       const topN = sanitizeTopCount(els.topCount.value);
       const minCapB = sanitizeMinCap(els.minCap.value);
-      const minCapDollars = minCapB * 1_000_000_000;
+      const minCapDollars = minCapB * 1e8;   // 输入单位：亿元
       els.topCount.value = topN;
       els.minCap.value = minCapB;
 
@@ -1158,15 +1162,13 @@
     let chartSym = null, chartName = "", chartRange = "6M";
     const ohlcCache = new Map();   // key: SYM|API_RANGE -> 升序 OHLC 数组
 
-    // StockAnalysis 只认 3M/6M/1Y/5Y 等；1M 不识别（会退化成 1 年）。
-    // 故按钮 → { api: 实际请求的区间, tail: 只保留最后 N 个交易日（0=全部） }。
-    const RANGE_MAP = {
-      "1M": { api: "6M", tail: 22 },   // 拉 6M 再切最后约一个月；与 6M 共用同一次请求
-      "3M": { api: "3M", tail: 0 },
-      "6M": { api: "6M", tail: 0 },
-      "1Y": { api: "1Y", tail: 0 },
-      "5Y": { api: "5Y", tail: 0 }
-    };
+    // 区间 → 东财日 K 拉取的 bar 数
+    const RANGE_MAP = { "1M": 22, "3M": 63, "6M": 126, "1Y": 244, "5Y": 1220 };
+
+    // A 股 secid 前缀：沪市(6/5/9/11...)=1，其余(深/创业/北)=0
+    function emSecid(code) {
+      return (/^(6|5|9|11|113|118|132|204|688)/.test(code) ? "1." : "0.") + code;
+    }
 
     function chartLibReady() {
       return typeof LightweightCharts !== "undefined" && LightweightCharts.createChart;
@@ -1190,27 +1192,23 @@
       chart.priceScale("vol").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
     }
 
-    async function fetchOHLC(sym, range) {
-      const key = `${sym}|${range}`;
+    // 东财日 K（前复权）；klines 每行为 "日期,开,收,高,低,量,额"（注意：收在第 2 位）
+    async function fetchOHLC(sym, bars) {
+      const key = `${sym}|${bars}`;
       if (ohlcCache.has(key)) return ohlcCache.get(key);
-      const tryFetch = async (s) => {
-        const url = `https://stockanalysis.com/api/symbol/s/${encodeURIComponent(s)}/history?range=${range}&period=Daily`;
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 12000);   // 12s 超时，避免无限「正在加载」
-        try {
-          const res = await fetch(url, { signal: ctrl.signal });
-          if (!res.ok) return null;
-          const json = await res.json();
-          return (json && json.data) || null;
-        } finally {
-          clearTimeout(timer);
-        }
-      };
-      let data = await tryFetch(sym);
-      if (!data && sym.includes(".")) data = await tryFetch(sym.replace(/\./g, "-"));
-      const rows = (data || [])
-        .filter((d) => d && d.t && d.o != null && d.h != null && d.l != null && d.c != null)
-        .map((d) => ({ time: d.t, open: +d.o, high: +d.h, low: +d.l, close: +d.c, volume: +d.v }))
+      const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${emSecid(sym)}`
+        + `&klt=101&fqt=1&lmt=${bars}&end=20500101&fields1=f1&fields2=f51,f52,f53,f54,f55,f56,f57`;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 12000);
+      let klines = null;
+      try {
+        const res = await fetch(url, { signal: ctrl.signal });
+        if (res.ok) { const j = await res.json(); klines = (j && j.data && j.data.klines) || null; }
+      } catch (e) { /* 超时/网络 */ } finally { clearTimeout(timer); }
+      const rows = (klines || []).map((line) => {
+        const p = line.split(",");
+        return { time: p[0], open: +p[1], close: +p[2], high: +p[3], low: +p[4], volume: +p[5] };
+      }).filter((d) => d.time && Number.isFinite(d.close))
         .sort((a, b) => (a.time < b.time ? -1 : 1));
       ohlcCache.set(key, rows);
       return rows;
@@ -1242,9 +1240,8 @@
     async function loadChart() {
       showChartMsg("正在加载 K 线…", false);
       try {
-        const cfg = RANGE_MAP[chartRange] || { api: chartRange, tail: 0 };
-        let rows = await fetchOHLC(chartSym, cfg.api);
-        if (cfg.tail) rows = rows.slice(-cfg.tail);
+        const bars = RANGE_MAP[chartRange] || 126;
+        let rows = await fetchOHLC(chartSym, bars);
         if (!rows.length) {
           showChartMsg(`暂无 ${chartSym} 的 K 线数据。`, true);
           return;
@@ -1263,7 +1260,7 @@
         console.error(e);
         const net = e && (e.name === "AbortError" || e.name === "TypeError");
         showChartMsg(net
-          ? "加载失败：浏览器无法访问 stockanalysis.com（可能是网络/区域限制或超时）。"
+          ? "加载失败：浏览器无法访问东方财富行情接口（网络/区域限制或超时）。"
           : `加载失败：${e.message || e}`, true);
       }
     }

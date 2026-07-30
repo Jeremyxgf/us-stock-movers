@@ -94,10 +94,11 @@ def fetch_all_rows() -> list:
             change = numf(r.get("changepercent"))
             lp = limit_pct(code, name)
             lim = 0
-            if change is not None:
-                if change >= lp - 0.3:
+            # 封板须贴着停板线（双侧容差带）；排除新股(N/C)首日无涨跌停的大涨
+            if change is not None and not str(name or "").startswith(("N", "C")):
+                if lp - 0.3 <= change <= lp + 0.6:
                     lim = 1
-                elif change <= -(lp - 0.3):
+                elif -(lp + 0.6) <= change <= -(lp - 0.3):
                     lim = -1
             mc = numf(r.get("mktcap"))
             fc = numf(r.get("nmc"))
