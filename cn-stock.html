@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>A股个股筹码分布</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fb; --panel: #ffffff; --ink: #172033; --muted: #637083;
+      --line: #dfe5ee; --red: #b42318; --green: #087443; --blue: #2457a6;
+      --inst: #2457a6;      /* 机构：品牌蓝 */
+      --retail: #e8930c;    /* 散户：橙（蓝橙为色盲安全对） */
+      --shadow: 0 18px 48px rgba(23, 32, 51, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: linear-gradient(135deg, rgba(36,87,166,0.07), transparent 34%), var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.5;
+    }
+    .wrap { width: min(1280px, calc(100% - 32px)); margin: 0 auto; padding: 26px 0 40px; }
+    header { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: baseline; margin-bottom: 14px; }
+    h1 { margin: 0; font-size: clamp(26px, 3.5vw, 40px); line-height: 1.05; }
+    .price { font-size: 24px; font-weight: 800; }
+    .chg.gain { color: var(--green); } .chg.loss { color: var(--red); }
+    .chg { font-size: 16px; font-weight: 750; }
+    .company { color: var(--muted); font-size: 15px; }
+    .backlink { margin-left: auto; color: var(--blue); text-decoration: none; font-weight: 700; font-size: 14px; }
+    .backlink:hover { text-decoration: underline; }
+    .status { min-height: 20px; margin: 0 2px 12px; color: var(--muted); font-size: 13px; }
+    .status.error { color: var(--red); font-weight: 650; }
+
+    .winbar {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--line);
+      border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); font-size: 13px;
+    }
+    .winbar label { color: var(--muted); font-weight: 650; }
+    .winbar input {
+      width: 90px; min-height: 36px; border: 1px solid var(--line); border-radius: 8px;
+      padding: 6px 10px; font: inherit; font-size: 14px; background: #fbfdff; color: var(--ink);
+    }
+    .winbar input:focus { border-color: var(--blue); outline: 3px solid rgba(36,87,166,0.16); }
+    .winbar button {
+      min-height: 36px; border: 0; border-radius: 8px; padding: 0 16px;
+      background: var(--blue); color: #fff; font: inherit; font-weight: 750; cursor: pointer;
+    }
+    .winbar .hint { color: var(--muted); font-size: 12px; }
+
+    .cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 0 0 14px; }
+    .card { padding: 13px 15px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); }
+    .card .label { color: var(--muted); font-size: 12px; }
+    .card .value { margin-top: 4px; font-size: 20px; font-weight: 800; }
+    .card .value small { font-size: 13px; font-weight: 650; color: var(--muted); }
+    .v-green { color: var(--green); } .v-red { color: var(--red); }
+
+    .stage { display: grid; grid-template-columns: 3fr 2fr; gap: 14px; margin-bottom: 14px; }
+    .panel { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); overflow: hidden; }
+    .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+    .panel-head strong { font-size: 15px; }
+    .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); }
+    .legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+    #kchart { width: 100%; height: 440px; }
+    #chip-box { position: relative; padding: 8px 6px 10px 2px; }
+    #chip-svg { display: block; width: 100%; height: 440px; }
+    #chip-tip {
+      position: absolute; display: none; pointer-events: none; z-index: 5;
+      padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px;
+      background: rgba(255,255,255,0.97); box-shadow: var(--shadow); font-size: 12px; white-space: nowrap;
+    }
+    #chip-tip b { font-size: 13px; }
+
+    .conclusions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+    .conc { padding: 14px 16px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
+    .conc h3 { margin: 0 0 6px; font-size: 14px; display: flex; align-items: center; gap: 7px; }
+    .conc .zone { font-size: 19px; font-weight: 800; }
+    .conc .sub { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+    .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+    .note { margin: 6px 2px 0; color: var(--muted); font-size: 13px; }
+    .note strong { color: var(--ink); }
+    .note a { color: var(--blue); text-decoration: none; font-weight: 650; }
+    @media (max-width: 980px) {
+      .stage, .conclusions { grid-template-columns: 1fr; }
+      .cards { grid-template-columns: repeat(2, 1fr); }
+      #kchart, #chip-svg { height: 360px; }
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <h1 id="sym">…</h1>
+      <span class="company" id="name"></span>
+      <span class="price" id="price"></span>
+      <span class="chg" id="chg"></span>
+      <a class="backlink" href="./cn-index.html">← 返回 A股榜单</a>
+    </header>
+    <div class="status" id="status">正在加载…</div>
+
+    <form class="winbar" id="win-form">
+      <label for="win-months">统计窗口（月）</label>
+      <input id="win-months" type="number" min="1" max="60" step="1" value="12" inputmode="numeric">
+      <button type="submit">重算</button>
+      <span class="hint">默认 12 个月（1 月 ≈ 21 个交易日，最多 60 个月）。高换手股建议改短（3–6），低换手股可拉长；改后即时重算，不重新下载。</span>
+    </form>
+
+    <section class="cards" aria-label="筹码指标">
+      <div class="card"><div class="label">获利盘（现价下方筹码）</div><div class="value v-green" id="m-profit">-</div></div>
+      <div class="card"><div class="label">套牢盘（现价上方筹码）</div><div class="value v-red" id="m-trapped">-</div></div>
+      <div class="card"><div class="label">市场平均成本</div><div class="value" id="m-avg">-</div></div>
+      <div class="card"><div class="label">90% 筹码成本区间</div><div class="value" id="m-band">-</div></div>
+      <div class="card"><div class="label">筹码集中度</div><div class="value" id="m-conc">-</div></div>
+    </section>
+
+    <section class="stage">
+      <div class="panel">
+        <div class="panel-head"><strong id="k-title">日 K 线</strong><span class="legend" id="k-note">复权价</span></div>
+        <div id="kchart"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head">
+          <strong id="chip-title">筹码分布</strong>
+          <span class="legend">
+            <span><span class="sw" style="background:var(--inst)"></span>机构（推断）</span>
+            <span><span class="sw" style="background:var(--retail)"></span>散户（推断）</span>
+          </span>
+        </div>
+        <div id="chip-box">
+          <svg id="chip-svg" role="img" aria-label="筹码分布直方图"></svg>
+          <div id="chip-tip"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="conclusions">
+      <div class="conc">
+        <h3><span class="dot" style="background:var(--retail)"></span>散户被套最重的区间</h3>
+        <div class="zone" id="c-trapped">-</div>
+        <div class="sub" id="c-trapped-sub"></div>
+      </div>
+      <div class="conc">
+        <h3><span class="dot" style="background:var(--inst)"></span>机构主力成本区（推断）</h3>
+        <div class="zone" id="c-inst">-</div>
+        <div class="sub" id="c-inst-sub"></div>
+      </div>
+    </section>
+
+    <p class="note" id="method">
+      <strong>方法</strong>：筹码分布用经典换手衰减模型（源自国内「筹码分布」概念）——把统计窗口（默认 12 个月，可在上方改 1–60 个月）内每天的成交量按三角形分布摊到当日价格区间（峰在均价 (O+H+L+C)/4），
+      并按当日换手率（成交量 ÷ 流通股）衰减旧筹码，得到「当前持仓者的成本分布」（前复权）。A 股换手率高，此模型比美股更贴合。
+      <strong>机构 / 散户为推断值</strong>：A 股逐笔委托明细免费不可得，本页用两层代理逐日估计「机构买入概率」：
+      ① 量价行为特征——机构吸筹（温和放量 + 窄振幅 + 低位收高）、恐慌日低位承接为加分项；散户行为（前期大涨后高位爆量 / 跳空追高、高位长上影接盘）为减分项；
+      ② 最近约一个月若该股在活跃股池内，再叠加 <strong>5 分钟大单集中度</strong>（单 bar 成交 ≥3× 当日中位的成交占比）作为大单代理。
+      每天的成交量按此概率分入「机构层 / 散户层」两个直方图。<strong>结果是概率性估计而非事实</strong>（真实机构动向可另参考龙虎榜/北向持股），仅供参考，不构成投资建议。数据源：腾讯前复权日 K + 新浪快照（流通市值）。
+    </p>
+  </main>
+
+  <script>
+    const BINS = 120;
+    const qs = new URLSearchParams(location.search);
+    const SYM = (qs.get("s") || "").trim().toUpperCase();
+
+    const $ = (id) => document.getElementById(id);
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const fmt$ = (v) => v < 1 ? `¥${v.toFixed(3)}` : `¥${v.toFixed(2)}`;
+    const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+
+    function setStatus(t, err = false) {
+      $("status").textContent = t;
+      $("status").classList.toggle("error", err);
+    }
+
+    // ---------- 数据加载 ----------
+    // A 股代码 → 腾讯符号前缀（沪 sh / 深·创·北 sz）
+    function cnSym(code) {
+      return (/^(6|5|9|11|113|118|132|204|688)/.test(code) ? "sh" : "sz") + code;
+    }
+
+    // 腾讯前复权日 K → 统一成 {t,o,h,l,c,a,v} 形状（a=c，前复权无需再校正；量手→股 ×100）
+    async function fetchDaily(sym) {
+      const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${cnSym(sym)},day,,,1800,qfq`;
+      let node = null;
+      try {
+        const r = await fetch(url);
+        if (!r.ok) return null;
+        const j = await r.json();
+        node = (j.data && j.data[cnSym(sym)]) || null;
+      } catch { return null; }
+      if (!node) return null;
+      const kl = node.qfqday || node.day || [];
+      return kl.map((row) => ({
+        t: row[0], o: +row[1], c: +row[2], h: +row[3], l: +row[4],
+        a: +row[2], v: (+row[5]) * 100,
+      })).filter((d) => d.t && Number.isFinite(d.c) && d.c > 0);
+    }
+
+    async function fetchMeta(sym) {
+      try {
+        const m = await (await fetch("./data/cn/manifest.json")).json();
+        const latest = (m.dates || m).slice().sort().pop();
+        const rows = await (await fetch(`./data/cn/${latest}.json`)).json();
+        return rows.find((r) => r.s === sym) || null;
+      } catch { return null; }
+    }
+
+    async function fetchBk(sym) {
+      try {
+        const d = await (await fetch("./data/cn/intraday.json")).json();
+        const e = d.stocks && d.stocks[sym];
+        return e && e.bk ? { dates: e.dates || [], bk: e.bk } : null;
+      } catch { return null; }
+    }
+
+    // ---------- 算法（与 Python 参考实现逐式一致） ----------
+    function prepare(raw) {
+      return raw.slice().sort((a, b) => (a.t < b.t ? -1 : 1)).flatMap((r) => {
+        const c = r.c; if (!(c > 0)) return [];
+        const f = (r.a > 0 ? r.a : c) / c;
+        return [{ t: r.t, o: (r.o > 0 ? r.o : c) * f, h: (r.h > 0 ? r.h : c) * f,
+                  l: (r.l > 0 ? r.l : c) * f, c: c * f, v: Number(r.v) || 0 }];
+      });
+    }
+
+    function instProb(bars, bkMap) {
+      const lnv = bars.map((b) => (b.v > 0 ? Math.log(b.v) : null));
+      return bars.map((b, i) => {
+        const w0 = Math.max(0, i - 60);
+        const win = lnv.slice(w0, i).filter((x) => x !== null);
+        let vz = 0;
+        if (win.length >= 10 && lnv[i] !== null) {
+          const mu = win.reduce((a, x) => a + x, 0) / win.length;
+          const sd = Math.sqrt(win.reduce((a, x) => a + (x - mu) ** 2, 0) / (win.length - 1)) || 1e-9;
+          vz = (lnv[i] - mu) / sd;
+        }
+        const p0 = Math.max(0, i - 250);
+        const closes = bars.slice(p0, i + 1).map((x) => x.c);
+        const lo = Math.min(...closes), hi = Math.max(...closes);
+        const pos = hi > lo && closes.length >= 30 ? (b.c - lo) / (hi - lo) : 0.5;
+        const run = i >= 21 ? b.c / bars[i - 21].c - 1 : 0;
+        const rng = b.h - b.l;
+        const clv = rng > 0 ? (b.c - b.l) / rng : 0.5;
+        const us = rng > 0 ? (b.h - Math.max(b.o, b.c)) / rng : 0;
+        const amps = bars.slice(w0, i + 1).map((x) => (x.h - x.l) / x.c).sort((a, c) => a - c);
+        const med = amps[Math.floor(amps.length / 2)] || 1e-9;
+        const rangeR = ((b.h - b.l) / b.c) / med;
+        const gap = i > 0 ? b.o / bars[i - 1].c - 1 : 0;
+
+        const absorb = clamp(vz, 0, 2.2) / 2.2 * clamp(1 - rangeR / 1.5, 0, 1) * (1 - pos);
+        const lowclose = clv * (1 - pos);
+        const panic = (1 - pos) * clamp(vz / 3, 0, 1) * (1 - clv);
+        const chase = pos * clamp(run / 0.25, 0, 1) * clamp(vz / 3, 0, 1.2)
+                    + clamp(gap / 0.05, 0, 1) * pos * 0.5;
+        const shadow = us * pos;
+
+        let score = 1.2 * absorb + 0.8 * lowclose + 0.6 * panic - 1.2 * chase - 0.8 * shadow;
+        // 大单集中度代理（最近约 22 天、500 池内才有）：高于常态 → 机构，低于 → 散户
+        const bk = bkMap ? bkMap.get(b.t) : undefined;
+        if (bk != null) score += 1.0 * clamp((bk - 0.3) / 0.35, -1, 1);
+        return clamp(1 / (1 + Math.exp(-2 * score)), 0.05, 0.95);
+      });
+    }
+
+    function chipDist(bars, flt, ps) {
+      const lo = Math.min(...bars.map((b) => b.l)) * 0.98;
+      const hi = Math.max(...bars.map((b) => b.h)) * 1.02;
+      const step = (hi - lo) / BINS;
+      const inst = new Array(BINS).fill(0), ret = new Array(BINS).fill(0);
+      bars.forEach((b, idx) => {
+        const v = b.v; if (!(v > 0)) return;
+        const decay = 1 - Math.min(0.9, v / flt);
+        for (let k = 0; k < BINS; k++) { inst[k] *= decay; ret[k] *= decay; }
+        const L = b.l, H = b.h, avg = (b.o + b.h + b.l + b.c) / 4;
+        const k0 = clamp(Math.floor((L - lo) / step), 0, BINS - 1);
+        const k1 = clamp(Math.floor((H - lo) / step), 0, BINS - 1);
+        const ws = [];
+        for (let k = k0; k <= k1; k++) {
+          const pc = lo + (k + 0.5) * step;
+          let w;
+          if (H === L) w = 1;
+          else if (pc <= avg) w = avg > L ? Math.max(0, (pc - L) / (avg - L)) : 1;
+          else w = H > avg ? Math.max(0, (H - pc) / (H - avg)) : 1;
+          ws.push(w);
+        }
+        const tot = ws.reduce((a, x) => a + x, 0) || 1;
+        const p = ps[idx];
+        ws.forEach((w, j) => {
+          const share = v * w / tot;
+          inst[k0 + j] += share * p;
+          ret[k0 + j] += share * (1 - p);
+        });
+      });
+      return { lo, step, inst, ret };
+    }
+
+    // ---------- 指标与结论 ----------
+    function analyze(dist, price, flt) {
+      const { lo, step, inst, ret } = dist;
+      const tot = inst.reduce((a, x) => a + x, 0) + ret.reduce((a, x) => a + x, 0);
+      const binP = (k) => lo + (k + 0.5) * step;
+      let below = 0, costSum = 0;
+      for (let k = 0; k < BINS; k++) {
+        const t = inst[k] + ret[k];
+        if (binP(k) <= price) below += t;
+        costSum += binP(k) * t;
+      }
+      const profit = below / tot * 100;
+      const avg = costSum / tot;
+      let cum = 0, p5 = null, p95 = null;
+      for (let k = 0; k < BINS; k++) {
+        cum += inst[k] + ret[k];
+        if (p5 === null && cum >= tot * 0.05) p5 = binP(k);
+        if (p95 === null && cum >= tot * 0.95) { p95 = binP(k); break; }
+      }
+      const conc = (p95 - p5) / ((p95 + p5) / 2) * 100;   // 越小越集中
+
+      // 连续区间搜索：cond(k) 为真的相邻 bin 合并，按筹码量排序
+      const zones = (cond) => {
+        const out = []; let cur = null;
+        const floor = tot / BINS * 0.6;
+        for (let k = 0; k < BINS; k++) {
+          const t = inst[k] + ret[k];
+          if (t > floor && cond(k, t)) {
+            if (!cur) cur = { k0: k, k1: k, mass: 0, instMass: 0 };
+            cur.k1 = k; cur.mass += t; cur.instMass += inst[k];
+          } else if (cur) { out.push(cur); cur = null; }
+        }
+        if (cur) out.push(cur);
+        return out.sort((a, b) => b.mass - a.mass);
+      };
+      const retailShareAll = ret.reduce((a, x) => a + x, 0) / tot;
+      const instShareAll = 1 - retailShareAll;
+      // 散户被套：现价上方 + 散户占比高于其整体占比 + 有量
+      const trapped = zones((k, t) => binP(k) > price && ret[k] / t > retailShareAll + 0.03);
+      // 机构持仓：机构占比高于其整体占比的密集峰
+      const instz = zones((k, t) => inst[k] / t > instShareAll + 0.03);
+      return { tot, profit, avg, p5, p95, conc, trapped, instz, retailShareAll, binP };
+    }
+
+    // ---------- 渲染 ----------
+    function renderCards(a, flt) {
+      $("m-profit").textContent = `${a.profit.toFixed(1)}%`;
+      $("m-trapped").textContent = `${(100 - a.profit).toFixed(1)}%`;
+      $("m-avg").textContent = fmt$(a.avg);
+      $("m-band").innerHTML = `${fmt$(a.p5)}<small> ~ </small>${fmt$(a.p95)}`;
+      $("m-conc").innerHTML = `${a.conc.toFixed(0)}%<small>（区间/均价，越小越集中）</small>`;
+    }
+
+    function renderConclusions(a, flt) {
+      const z2str = (z) => `${fmt$(a.binP(z.k0) - 0)} – ${fmt$(a.binP(z.k1))}`;
+      const t = a.trapped[0];
+      if (t) {
+        $("c-trapped").textContent = z2str(t);
+        $("c-trapped-sub").textContent =
+          `约占流通盘 ${(t.mass / flt * 100).toFixed(1)}%，其中散户推断占比 ${((1 - t.instMass / t.mass) * 100).toFixed(0)}%。这批筹码成本在现价上方（被套），且散户特征强于全局平均。`;
+      } else {
+        $("c-trapped").textContent = "无明显区间";
+        $("c-trapped-sub").textContent = "现价上方没有散户特征显著的密集筹码带（可能股价接近高点，或上方筹码以机构为主）。";
+      }
+      const z = a.instz[0];
+      if (z) {
+        $("c-inst").textContent = z2str(z);
+        $("c-inst-sub").textContent =
+          `约占流通盘 ${(z.mass / flt * 100).toFixed(1)}%，机构推断占比 ${(z.instMass / z.mass * 100).toFixed(0)}%。密集峰通常形成于吸筹/横盘期，可视为主力成本参考。`;
+      } else {
+        $("c-inst").textContent = "无明显区间";
+        $("c-inst-sub").textContent = "未找到机构特征显著的密集筹码峰。";
+      }
+    }
+
+    function renderChips(dist, price, flt) {
+      const { lo, step, inst, ret } = dist;
+      const svg = $("chip-svg");
+      const W = svg.clientWidth || 460, H = svg.clientHeight || 440;
+      const padL = 52, padR = 12, padT = 8, padB = 20;
+      const plotW = W - padL - padR, plotH = H - padT - padB;
+      const maxBin = Math.max(...inst.map((x, k) => x + ret[k])) || 1;
+      const y = (p) => padT + (1 - (p - lo) / (step * BINS)) * plotH;
+      const rowH = plotH / BINS;
+      const barH = Math.max(1.5, rowH - 1);
+      let els = "";
+
+      // 获利（下）/ 套牢（上）浅色分区
+      const yP = clamp(y(price), padT, padT + plotH);
+      els += `<rect x="${padL}" y="${padT}" width="${plotW}" height="${Math.max(0, yP - padT)}" fill="rgba(180,35,24,0.045)"/>`;
+      els += `<rect x="${padL}" y="${yP}" width="${plotW}" height="${Math.max(0, padT + plotH - yP)}" fill="rgba(8,116,67,0.05)"/>`;
+
+      for (let k = 0; k < BINS; k++) {
+        const total = inst[k] + ret[k];
+        if (total <= 0) continue;
+        const yy = y(lo + (k + 1) * step);
+        const wI = inst[k] / maxBin * plotW;
+        const wR = ret[k] / maxBin * plotW;
+        els += `<rect class="bin" data-k="${k}" x="${padL}" y="${yy.toFixed(1)}" width="${Math.max(0.5, wI).toFixed(1)}" height="${barH.toFixed(1)}" rx="1.5" fill="var(--inst)"/>`;
+        if (wR > 0.4) els += `<rect class="bin" data-k="${k}" x="${(padL + wI + 2).toFixed(1)}" y="${yy.toFixed(1)}" width="${Math.max(0.5, wR).toFixed(1)}" height="${barH.toFixed(1)}" rx="1.5" fill="var(--retail)"/>`;
+      }
+
+      // 价格轴刻度（5 档）
+      for (let i = 0; i <= 4; i++) {
+        const p = lo + (step * BINS) * i / 4;
+        const yy = y(p);
+        els += `<text x="${padL - 6}" y="${yy + 4}" text-anchor="end" font-size="10.5" fill="var(--muted)">${p >= 1 ? p.toFixed(p >= 100 ? 0 : 1) : p.toFixed(3)}</text>`;
+        els += `<line x1="${padL}" x2="${W - padR}" y1="${yy}" y2="${yy}" stroke="var(--line)" stroke-width="0.6"/>`;
+      }
+      // 现价线
+      els += `<line x1="${padL}" x2="${W - padR}" y1="${yP}" y2="${yP}" stroke="var(--ink)" stroke-width="1.2" stroke-dasharray="5 4"/>`;
+      els += `<text x="${W - padR - 2}" y="${yP - 5}" text-anchor="end" font-size="11" font-weight="700" fill="var(--ink)">现价 ${fmt$(price)}</text>`;
+      svg.innerHTML = els;
+      // 悬浮 tooltip 读这些状态（监听器只在启动时挂一次，避免重算后叠加）
+      chipState = { lo, step, inst, ret, flt, padT, plotH };
+    }
+
+    let chipState = null;
+    function initChipTooltip() {
+      const svg = $("chip-svg");
+      const tip = $("chip-tip");
+      svg.addEventListener("mousemove", (e) => {
+        if (!chipState) return;
+        const { lo, step, inst, ret, flt, padT, plotH } = chipState;
+        const rect = svg.getBoundingClientRect();
+        const my = e.clientY - rect.top;
+        const k = clamp(Math.floor((1 - (my - padT) / plotH) * BINS), 0, BINS - 1);
+        const total = inst[k] + ret[k];
+        if (total <= 0) { tip.style.display = "none"; return; }
+        const p0 = lo + k * step, p1 = lo + (k + 1) * step;
+        tip.innerHTML = `<b>${fmt$(p0)} – ${fmt$(p1)}</b><br>`
+          + `占流通盘 ${(total / flt * 100).toFixed(2)}%<br>`
+          + `<span style="color:var(--inst)">机构 ${(inst[k] / total * 100).toFixed(0)}%</span> · `
+          + `<span style="color:var(--retail)">散户 ${(ret[k] / total * 100).toFixed(0)}%</span>`;
+        tip.style.display = "block";
+        const bx = e.clientX - rect.left;
+        tip.style.left = `${Math.min(bx + 14, rect.width - 170)}px`;
+        tip.style.top = `${my - 20}px`;
+      });
+      svg.addEventListener("mouseleave", () => { tip.style.display = "none"; });
+    }
+
+    let kchart = null, kSeries = null, kVol = null;
+    function renderKChart(bars) {
+      if (typeof LightweightCharts === "undefined") {
+        $("kchart").innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted)">图表库未能加载。</div>`;
+        return;
+      }
+      const el = $("kchart");
+      if (!kchart) {
+        kchart = LightweightCharts.createChart(el, {
+          width: el.clientWidth || 640, height: el.clientHeight || 440,
+          layout: { background: { color: "#ffffff" }, textColor: "#637083" },
+          grid: { vertLines: { color: "#eef1f6" }, horzLines: { color: "#eef1f6" } },
+          rightPriceScale: { borderColor: "#dfe5ee" },
+          timeScale: { borderColor: "#dfe5ee" }
+        });
+        kSeries = kchart.addCandlestickSeries({
+          upColor: "#087443", downColor: "#b42318",
+          wickUpColor: "#087443", wickDownColor: "#b42318", borderVisible: false
+        });
+        kVol = kchart.addHistogramSeries({ priceFormat: { type: "volume" }, priceScaleId: "vol" });
+        kchart.priceScale("vol").applyOptions({ scaleMargins: { top: 0.84, bottom: 0 } });
+        window.addEventListener("resize", () => kchart.applyOptions({ width: el.clientWidth }));
+      }
+      kSeries.setData(bars.map((b) => ({ time: b.t, open: b.o, high: b.h, low: b.l, close: b.c })));
+      kVol.setData(bars.map((b) => ({ time: b.t, value: b.v, color: b.c >= b.o ? "rgba(8,116,67,0.35)" : "rgba(180,35,24,0.35)" })));
+      kchart.timeScale().fitContent();
+    }
+
+    // ---------- 主流程 ----------
+    // 一次拉 5 年日线存 fullBars；改窗口时只切片重算，不重新下载
+    let fullBars = [], gFlt = 0, gBkMap = null;
+
+    function recompute(months) {
+      const n = Math.min(fullBars.length, Math.round(months * 21));
+      const bars = fullBars.slice(-n);
+      if (bars.length < 30) { setStatus("该窗口内交易日不足 30 天，无法统计。请加大窗口。", true); return; }
+      const actualMonths = Math.round(bars.length / 21);
+
+      const last = bars[bars.length - 1];
+      const ps = instProb(bars, gBkMap);
+      const dist = chipDist(bars, gFlt, ps);
+      const a = analyze(dist, last.c, gFlt);
+
+      renderCards(a, gFlt);
+      renderConclusions(a, gFlt);
+      renderChips(dist, last.c, gFlt);
+      renderKChart(bars);
+
+      $("k-title").textContent = `日 K 线（${bars[0].t} ~ ${last.t}）`;
+      $("chip-title").textContent = `筹码分布（${actualMonths} 个月窗口）`;
+      const bkNote = gBkMap ? "已叠加最近一个月 5 分钟大单集中度。" : "该股不在最活跃 500 池内，机构/散户仅由日线量价特征推断。";
+      const short = bars.length < Math.round(months * 21) ? `（上市历史不足 ${months} 个月，实际用全部 ${bars.length} 天）` : "";
+      setStatus(`统计窗口 ${bars[0].t} ~ ${last.t}（${bars.length} 个交易日）${short}，流通盘 ${(gFlt / 1e9).toFixed(2)}B 股。${bkNote}`);
+    }
+
+    $("win-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const m = clamp(Math.round(Number($("win-months").value) || 12), 1, 60);
+      $("win-months").value = m;
+      recompute(m);
+    });
+
+    (async () => {
+      if (!SYM) { setStatus("缺少股票代码。请从榜单页点击公司名进入，或在地址栏加 ?s=NVDA。", true); return; }
+      document.title = `${SYM} 筹码分布`;
+      $("sym").textContent = SYM;
+      setStatus(`正在加载 ${SYM} 的日线与元数据…`);
+      initChipTooltip();
+      try {
+        const [raw, meta, bkData] = await Promise.all([fetchDaily(SYM), fetchMeta(SYM), fetchBk(SYM)]);
+        if (!raw) throw new Error("拿不到该股的日线数据（代码可能不存在或已退市）");
+        fullBars = prepare(raw);
+        if (fullBars.length < 30) throw new Error("历史数据太短（上市不足 30 个交易日），无法统计筹码分布");
+
+        // A 股流通股数 = 流通市值 ÷ 现价；无数据时用「12月成交量 1/4」兜底
+        const floatShares = (meta && Number(meta.floatCap) > 0 && Number(meta.price) > 0)
+          ? Number(meta.floatCap) / Number(meta.price) : 0;
+        gFlt = floatShares || fullBars.slice(-252).reduce((a, b) => a + b.v, 0) / 4;
+        if (meta && meta.n) $("name").textContent = meta.n;
+
+        const last = fullBars[fullBars.length - 1], prev = fullBars[fullBars.length - 2];
+        const chg = prev ? (last.c / prev.c - 1) * 100 : 0;
+        $("price").textContent = fmt$(last.c);
+        $("chg").textContent = `${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%`;
+        $("chg").className = `chg ${chg >= 0 ? "gain" : "loss"}`;
+
+        gBkMap = bkData ? new Map((bkData.dates || []).map((d, i) => [d, bkData.bk[i]])) : null;
+        recompute(12);
+      } catch (e) {
+        console.error(e);
+        setStatus(`加载失败：${e.message || e}`, true);
+      }
+    })();
+  </script>
+</body>
+</html>
