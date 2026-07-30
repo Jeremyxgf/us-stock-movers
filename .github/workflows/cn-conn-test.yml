@@ -1,0 +1,73 @@
+name: CN data source connectivity test
+
+# 一次性测试：GitHub Actions 的美国 runner 能否访问 腾讯/新浪/东财。
+# 仅在本文件变动时触发；每个数据源一个独立步骤(continue-on-error)，
+# 从公开的 jobs API 即可看到每步 success/failure，无需读日志。
+on:
+  push:
+    paths:
+      - ".github/workflows/cn-conn-test.yml"
+  workflow_dispatch: {}
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tencent qt.gtimg.cn (批量报价)
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          import urllib.request, sys
+          url="https://qt.gtimg.cn/q=sh600519,sz000001,sz300750"
+          req=urllib.request.Request(url, headers={"Referer":"https://gu.qq.com/","User-Agent":"Mozilla/5.0"})
+          raw=urllib.request.urlopen(req,timeout=20).read().decode("gbk","ignore")
+          n=raw.count("v_")
+          print("Tencent lines:", n, raw[:120])
+          sys.exit(0 if n>=3 else 1)
+          PY
+
+      - name: Sina getHQNodeData (活跃股池)
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          import urllib.request, json, sys, time
+          base="https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData"
+          ok=0
+          for pg in range(1,6):   # 打 5 页测容忍度
+              url=f"{base}?page={pg}&num=80&sort=amount&asc=0&node=hs_a&_s_r_a=page"
+              try:
+                  req=urllib.request.Request(url, headers={"Referer":"https://finance.sina.com.cn/","User-Agent":"Mozilla/5.0"})
+                  d=json.loads(urllib.request.urlopen(req,timeout=20).read().decode("utf-8","ignore"))
+                  if d: ok+=1
+                  print(f"page {pg}: {len(d)} rows")
+              except Exception as e:
+                  print(f"page {pg}: FAIL {type(e).__name__}")
+              time.sleep(1)
+          print("Sina ok pages:", ok, "/5")
+          sys.exit(0 if ok>=4 else 1)
+          PY
+
+      - name: Eastmoney push2 clist (对照，预期可能失败)
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          import urllib.request, json, sys, time
+          base="https://push2.eastmoney.com/api/qt/clist/get"
+          fs="m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23"
+          ok=0
+          for pg in range(1,6):
+              url=f"{base}?pn={pg}&pz=100&po=1&fltt=2&invt=2&fid=f3&fs={fs}&fields=f12,f14,f2"
+              try:
+                  req=urllib.request.Request(url, headers={"Referer":"https://quote.eastmoney.com/","User-Agent":"Mozilla/5.0"})
+                  d=json.loads(urllib.request.urlopen(req,timeout=20).read().decode("utf-8","ignore"))
+                  tot=(d.get("data") or {}).get("total")
+                  ok+=1; print(f"page {pg}: total={tot}")
+              except Exception as e:
+                  print(f"page {pg}: FAIL {type(e).__name__}")
+              time.sleep(1)
+          print("Eastmoney ok pages:", ok, "/5")
+          sys.exit(0 if ok>=4 else 1)
+          PY
+
+      - name: Summary
+        run: echo "见各步骤 success/failure 结论"
