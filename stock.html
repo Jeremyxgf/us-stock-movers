@@ -80,6 +80,35 @@
     .conc .sub { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
     .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 
+    /* ── 5 分钟波动率热力图 + 时段剖面 ── */
+    .ivpanel { margin-bottom: 14px; }
+    .ivbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; }
+    .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+    .seg button {
+      min-height: 30px; border: 0; padding: 5px 11px; background: #fbfdff; color: var(--muted);
+      font: inherit; font-size: 12px; font-weight: 650; cursor: pointer;
+    }
+    .seg button + button { border-left: 1px solid var(--line); }
+    .seg button[aria-pressed="true"] { background: var(--blue); color: #fff; }
+    .seg button:hover:not([aria-pressed="true"]) { background: #eef4fd; color: var(--ink); }
+    .iv-scale { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11.5px; }
+    .iv-scale .ramp { width: 88px; height: 9px; border-radius: 2px; border: 1px solid var(--line); }
+    .iv-body { padding: 12px 14px 14px; }
+    #hm-wrap, #prof-wrap { position: relative; }
+    #hm-svg, #prof-svg { display: block; width: 100%; }
+    #prof-svg { height: 196px; }
+    .iv-sub {
+      display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+      margin: 14px 2px 2px; padding-top: 12px; border-top: 1px solid var(--line);
+    }
+    .iv-sub strong { font-size: 14px; }
+    .iv-tip {
+      position: absolute; display: none; pointer-events: none; z-index: 6;
+      padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px;
+      background: rgba(255,255,255,0.97); box-shadow: var(--shadow); font-size: 12px; white-space: nowrap;
+    }
+    .iv-msg { padding: 26px 10px; color: var(--muted); font-size: 13px; text-align: center; }
+
     .note { margin: 6px 2px 0; color: var(--muted); font-size: 13px; }
     .note strong { color: var(--ink); }
     .note a { color: var(--blue); text-decoration: none; font-weight: 650; }
@@ -149,6 +178,52 @@
         <div class="sub" id="c-inst-sub"></div>
       </div>
     </section>
+
+    <section class="panel ivpanel" id="ivpanel" aria-label="5 分钟波动率">
+      <div class="panel-head">
+        <strong id="iv-title">5 分钟波动率热力图</strong>
+        <span class="ivbar">
+          <span class="seg" id="iv-days" role="group" aria-label="回溯天数">
+            <button type="button" data-d="5">近5日</button>
+            <button type="button" data-d="10">近10日</button>
+            <button type="button" data-d="22" aria-pressed="true">近22日</button>
+          </span>
+          <span class="seg" id="iv-metric" role="group" aria-label="指标">
+            <button type="button" data-m="vol" aria-pressed="true">波动率</button>
+            <button type="button" data-m="turn">成交量</button>
+          </span>
+          <span class="iv-scale"><span>低</span><span class="ramp" id="iv-ramp"></span><span id="iv-hi">–</span></span>
+        </span>
+      </div>
+      <div class="iv-body">
+        <div class="iv-msg" id="iv-msg">正在加载 5 分钟数据…</div>
+        <div id="hm-wrap" hidden>
+          <svg id="hm-svg" role="img" aria-label="按交易日 × 时段的 5 分钟波动率热力图"></svg>
+          <div class="iv-tip" id="hm-tip"></div>
+        </div>
+        <div class="iv-sub" id="iv-sub" hidden>
+          <strong id="prof-title">时段剖面</strong>
+          <span class="legend">
+            <span><span class="sw" style="background:var(--blue)"></span>当日</span>
+            <span><span class="sw" style="background:var(--muted)"></span>同时段中位（<span id="iv-legend-n">近22日</span>）</span>
+            <span><span class="sw" style="background:#cde2fb"></span>P25–P75 分位带</span>
+          </span>
+        </div>
+        <div id="prof-wrap" hidden>
+          <svg id="prof-svg" role="img" aria-label="选定交易日的时段波动率剖面曲线"></svg>
+          <div class="iv-tip" id="prof-tip"></div>
+        </div>
+      </div>
+    </section>
+
+    <p class="note" id="iv-method">
+      <strong>5 分钟波动率口径</strong>：单根 bar 的波动率 = <code>|ln(收盘ᵢ / 收盘ᵢ₋₁)|</code>，只取<strong>日内相邻</strong>两根，
+      不含隔夜跳空（故每个交易日的第一根为空白格）。这与「日内波动率」页的已实现波动率同源——
+      <strong>热力图任一行的各格平方和再开根，就是该日的 RV</strong>（悬浮行首可见该日 RV，可自行对账）。
+      热力图色阶上限取窗口内 P98（避免单根尖峰把整图冲淡），超出者按最深色封顶。
+      剖面图的中位线与 P25–P75 带按同一时段跨所选天数统计，用于判断当日某时段是「一贯如此」还是「异常放大」。
+      数据源：东方财富 5 分钟 K（浏览器按需直取），与日内波动率页的 Yahoo 数据源不同，同一天的数值可能有小幅差异。
+    </p>
 
     <p class="note" id="method">
       <strong>方法</strong>：筹码分布用经典换手衰减模型——把统计窗口（默认 12 个月，可在上方改 1–60 个月）内每天的成交量按三角形分布摊到当日价格区间（峰在均价 (O+H+L+C)/4），
@@ -456,6 +531,312 @@
       kchart.timeScale().fitContent();
     }
 
+    // ================= 5 分钟波动率热力图 + 时段剖面 =================
+    // 数据：东财 push2his kline（klt=5，CORS 开放，浏览器按需直取，不进管线）
+    // 口径：单 bar 波动率 = |ln(cᵢ/cᵢ₋₁)|，仅日内相邻 → 一行平方和开根 = 该日 RV
+    const EM_KLINE = "https://push2his.eastmoney.com/api/qt/stock/kline/get";
+    const IV_RAMP = ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"];
+    const IV_BLANK = "#f1f3f7";      // 无数据 / 当日首根（无前收）
+    const IV_MAXD = 22;
+
+    // 市场适配层：美股快照没有交易所字段，secid 前缀只能依次试（105 纳斯达克 / 106 纽交所 / 107 美交所）
+    const IVCFG = {
+      tz: "America/New_York",
+      volLabel: "成交量",
+      secids: (s) => {
+        const bases = [...new Set([s, s.replace(/\./g, "_"), s.replace(/\./g, "-")])];
+        return ["105", "106", "107"].flatMap((p) => bases.map((b) => `${p}.${b}`));
+      },
+      fmtVol: (v) => v >= 1e9 ? `${(v / 1e9).toFixed(2)}B` : v >= 1e6 ? `${(v / 1e6).toFixed(2)}M`
+                   : v >= 1e3 ? `${(v / 1e3).toFixed(1)}K` : String(Math.round(v)),
+    };
+
+    let ivData = null;                              // { days:[{day,cells,rv}], slots:[] }
+    let ivWin = IV_MAXD, ivMetric = "vol", ivSel = null;
+
+    async function emKlines(secid, lmt) {
+      const url = `${EM_KLINE}?secid=${encodeURIComponent(secid)}`
+        + `&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56,f57&klt=5&fqt=1&lmt=${lmt}&end=20500101`;
+      const r = await fetch(url);
+      if (!r.ok) return null;
+      const j = await r.json();
+      const kl = j && j.data && j.data.klines;
+      return (kl && kl.length) ? kl : null;
+    }
+
+    async function fetchIvBars(sym) {
+      for (const secid of IVCFG.secids(sym)) {
+        try { const kl = await emKlines(secid, IV_MAXD * 80); if (kl) return kl; } catch { /* 试下一个 */ }
+      }
+      return null;
+    }
+
+    // "YYYY-MM-DD HH:MM,开,收,高,低,量,额" → 按交易日分组，逐 bar 算 |对数收益|
+    // 东财时间戳一律北京时间（美股 16:00 EDT 记作次日 04:00），故先还原成 epoch 再按市场本地时区切日/取时段
+    function parseIvBars(klines) {
+      const dayF = new Intl.DateTimeFormat("en-CA", { timeZone: IVCFG.tz, year: "numeric", month: "2-digit", day: "2-digit" });
+      const slotF = new Intl.DateTimeFormat("en-GB", { timeZone: IVCFG.tz, hour: "2-digit", minute: "2-digit", hour12: false });
+      const byDay = new Map();
+      for (const row of klines) {
+        const p = row.split(",");
+        const m = /^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})/.exec(p[0]);
+        if (!m) continue;
+        const c = +p[2], v = +p[5];
+        if (!(c > 0)) continue;
+        const epoch = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) - 8 * 3600e3;
+        const d = new Date(epoch);
+        const day = dayF.format(d);
+        if (!byDay.has(day)) byDay.set(day, []);
+        byDay.get(day).push({ slot: slotF.format(d), epoch, c, v: v > 0 ? v : 0 });
+      }
+      const days = [...byDay.keys()].sort().map((day) => {
+        const rows = byDay.get(day).sort((a, b) => a.epoch - b.epoch);
+        let rv2 = 0;
+        const cells = rows.map((b, i) => {
+          let r = null;
+          if (i > 0 && rows[i - 1].c > 0) { r = Math.abs(Math.log(b.c / rows[i - 1].c)); rv2 += r * r; }
+          return { slot: b.slot, r, v: b.v };
+        });
+        return { day, cells, rv: Math.sqrt(rv2), vol: rows.reduce((a, b) => a + b.v, 0) };
+      }).filter((d) => d.cells.length >= 3);
+      const slotSet = new Set();
+      days.forEach((d) => d.cells.forEach((c) => slotSet.add(c.slot)));
+      return { days, slots: [...slotSet].sort() };   // 时段字符串同日内可直接字典序（A股午休自然压缩）
+    }
+
+    const ivVal = (cell) => cell == null ? null
+      : ivMetric === "vol" ? (cell.r == null ? null : cell.r * 100) : (cell.v > 0 ? cell.v : null);
+    const ivFmt = (v) => ivMetric === "vol" ? `${v.toFixed(2)}%` : IVCFG.fmtVol(v);
+
+    function ivWindow() {
+      const days = ivData.days.slice(-ivWin);
+      const grid = days.map((d) => {
+        const byslot = new Map(d.cells.map((c) => [c.slot, c]));
+        return { day: d.day, rv: d.rv, vol: d.vol, row: ivData.slots.map((s) => byslot.get(s) || null) };
+      });
+      const flat = grid.flatMap((g) => g.row.map(ivVal)).filter((v) => v != null && v > 0).sort((a, b) => a - b);
+      const cap = flat.length ? flat[Math.min(flat.length - 1, Math.floor(flat.length * 0.98))] : 1;
+      return { grid, cap: cap > 0 ? cap : 1 };
+    }
+
+    // 线性映射（不做 sqrt 压缩）：|对数收益| 右偏，中位数只在色阶约 1/4 处，
+    // 于是平静时段自然退到浅色、异动格子才吃到深色，U 型与孤立热点都能读出来
+    const ivColor = (v, cap) => v == null ? IV_BLANK
+      : IV_RAMP[clamp(Math.floor(Math.min(v, cap) / cap * IV_RAMP.length), 0, IV_RAMP.length - 1)];
+
+    // 休市断点：相邻两个时段间隔 >10 分钟处（A 股午休）。美股连续 → 返回空，自动不画
+    const slotMin = (s) => +s.slice(0, 2) * 60 + +s.slice(3, 5);
+    const ivBreaks = (slots) => slots
+      .map((s, i) => (i > 0 && slotMin(s) - slotMin(slots[i - 1]) > 10 ? i : -1)).filter((i) => i > 0);
+
+    // 轴上均匀挑 n 个时段刻度，避免标签打架
+    function ivTicks(slots, n) {
+      const out = [];
+      for (let i = 0; i < n; i++) out.push(Math.round(i * (slots.length - 1) / (n - 1)));
+      return [...new Set(out)];
+    }
+
+    let hmState = null;
+    function renderHeatmap() {
+      const { grid, cap } = ivWindow();
+      const svg = $("hm-svg");
+      const slots = ivData.slots, nC = slots.length, nR = grid.length;
+      const W = svg.clientWidth || 1100;
+      const padL = 54, padR = 10, padT = 6, padB = 22;
+      const cellH = clamp(Math.round(348 / Math.max(nR, 1)), 11, 24);
+      const plotW = W - padL - padR, plotH = nR * cellH;
+      const H = plotH + padT + padB;
+      svg.setAttribute("height", H);
+      svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+      const cw = plotW / nC, gap = cw > 8 ? 1.5 : 0.5;
+      let els = "";
+
+      grid.forEach((g, ri) => {
+        const y = padT + ri * cellH;
+        g.row.forEach((cell, ci) => {
+          const v = ivVal(cell);
+          els += `<rect x="${(padL + ci * cw + gap / 2).toFixed(2)}" y="${(y + gap / 2).toFixed(2)}"`
+               + ` width="${Math.max(0.5, cw - gap).toFixed(2)}" height="${Math.max(1, cellH - gap).toFixed(2)}"`
+               + ` rx="${cw > 8 ? 2 : 1}" fill="${ivColor(v, cap)}"/>`;
+        });
+        const sel = g.day === ivSel;
+        els += `<text x="${padL - 7}" y="${y + cellH / 2 + 3.5}" text-anchor="end" font-size="10.5"`
+             + ` font-weight="${sel ? 750 : 400}" fill="${sel ? "var(--blue)" : "var(--muted)"}">${g.day.slice(5)}</text>`;
+        if (sel) els += `<rect x="${padL}" y="${y}" width="${plotW}" height="${cellH}" fill="none"`
+                      + ` stroke="var(--blue)" stroke-width="1.5" rx="2"/>`;
+      });
+
+      ivBreaks(slots).forEach((i) => {
+        const bx = (padL + i * cw).toFixed(1);
+        els += `<line x1="${bx}" x2="${bx}" y1="${padT}" y2="${padT + plotH}" stroke="var(--muted)"`
+             + ` stroke-width="1" stroke-dasharray="3 3" opacity="0.6"/>`;
+      });
+      ivTicks(slots, Math.min(8, nC)).forEach((ci) => {
+        els += `<text x="${(padL + (ci + 0.5) * cw).toFixed(1)}" y="${padT + plotH + 14}" text-anchor="middle"`
+             + ` font-size="10.5" fill="var(--muted)">${slots[ci]}</text>`;
+      });
+      svg.innerHTML = els;
+      $("iv-title").textContent = `5 分钟${ivMetric === "vol" ? "波动率" : IVCFG.volLabel}热力图`
+        + `（${nR} 个交易日 × ${nC} 个时段）`;
+      $("iv-hi").textContent = `高 ≥ ${ivFmt(cap)}`;
+      $("iv-ramp").style.background = `linear-gradient(90deg, ${IV_RAMP.join(",")})`;
+      hmState = { grid, cap, slots, padL, padT, cw, cellH, nR };
+    }
+
+    function renderProfile() {
+      const { grid } = ivWindow();
+      const slots = ivData.slots, nC = slots.length;
+      const cur = grid.find((g) => g.day === ivSel) || grid[grid.length - 1];
+      // 每个时段跨窗口内所有交易日的分位数：判断当日该时段是常态还是异常
+      const q = slots.map((_, ci) => {
+        const xs = grid.map((g) => ivVal(g.row[ci])).filter((v) => v != null).sort((a, b) => a - b);
+        if (!xs.length) return null;
+        const at = (p) => xs[clamp(Math.round(p * (xs.length - 1)), 0, xs.length - 1)];
+        return { p25: at(0.25), p50: at(0.5), p75: at(0.75) };
+      });
+      const curVals = cur.row.map(ivVal);
+
+      const svg = $("prof-svg");
+      const W = svg.clientWidth || 1100, H = 196;
+      const padL = 54, padR = 10, padT = 12, padB = 24;
+      const plotW = W - padL - padR, plotH = H - padT - padB;
+      const top = Math.max(...q.map((x) => x ? x.p75 : 0), ...curVals.filter((v) => v != null), 1e-9) * 1.12;
+      const x = (i) => padL + (i + 0.5) * (plotW / nC);
+      const y = (v) => padT + (1 - v / top) * plotH;
+      svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+      let els = "";
+
+      for (let i = 0; i <= 3; i++) {
+        const v = top * i / 3, yy = y(v);
+        els += `<line x1="${padL}" x2="${W - padR}" y1="${yy.toFixed(1)}" y2="${yy.toFixed(1)}" stroke="var(--line)" stroke-width="0.6"/>`;
+        els += `<text x="${padL - 7}" y="${yy + 3.5}" text-anchor="end" font-size="10.5" fill="var(--muted)">${ivFmt(v)}</text>`;
+      }
+
+      // P25–P75 分位带（同色系浅步，退到背景）
+      const hi = [], lo = [];
+      q.forEach((x0, i) => { if (x0) { hi.push(`${x(i).toFixed(1)},${y(x0.p75).toFixed(1)}`); lo.unshift(`${x(i).toFixed(1)},${y(x0.p25).toFixed(1)}`); } });
+      if (hi.length) els += `<polygon points="${hi.concat(lo).join(" ")}" fill="#cde2fb" opacity="0.75"/>`;
+
+      const path = (vals, get) => vals.map((v, i) => (get(v) == null ? null : `${x(i).toFixed(1)},${y(get(v)).toFixed(1)}`))
+        .filter(Boolean).join(" ");
+      const med = path(q, (v) => v ? v.p50 : null);
+      if (med) els += `<polyline points="${med}" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="5 4" opacity="0.85"/>`;
+      const cp = path(curVals, (v) => v);
+      if (cp) els += `<polyline points="${cp}" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+
+      // 只给当日最高的那个时段直接标注（选择性直标，不给每点标数）
+      let mi = -1, mv = -1;
+      curVals.forEach((v, i) => { if (v != null && v > mv) { mv = v; mi = i; } });
+      if (mi >= 0) {
+        els += `<circle cx="${x(mi).toFixed(1)}" cy="${y(mv).toFixed(1)}" r="4" fill="var(--blue)" stroke="#fff" stroke-width="2"/>`;
+        const anchor = mi > nC * 0.75 ? "end" : "start";
+        const dx = anchor === "end" ? -8 : 8;
+        els += `<text x="${(x(mi) + dx).toFixed(1)}" y="${(y(mv) - 8).toFixed(1)}" text-anchor="${anchor}"`
+             + ` font-size="11" font-weight="700" fill="var(--ink)">${slots[mi]} ${ivFmt(mv)}</text>`;
+      }
+
+      ivBreaks(slots).forEach((i) => {
+        const bx = (padL + i * (plotW / nC)).toFixed(1);
+        els += `<line x1="${bx}" x2="${bx}" y1="${padT}" y2="${padT + plotH}" stroke="var(--muted)"`
+             + ` stroke-width="1" stroke-dasharray="3 3" opacity="0.6"/>`;
+      });
+      ivTicks(slots, Math.min(8, nC)).forEach((ci) => {
+        els += `<text x="${x(ci).toFixed(1)}" y="${H - 7}" text-anchor="middle" font-size="10.5" fill="var(--muted)">${slots[ci]}</text>`;
+      });
+      svg.innerHTML = els;
+      $("prof-title").textContent = ivMetric === "vol"
+        ? `时段剖面：${cur.day}（当日 RV ${(cur.rv * 100).toFixed(2)}%）`
+        : `时段剖面：${cur.day}（当日${IVCFG.volLabel} ${IVCFG.fmtVol(cur.vol)}）`;
+      $("iv-legend-n").textContent = `近${grid.length}日`;
+      profState = { q, curVals, slots, padL, plotW, nC, cur };
+    }
+
+    let profState = null;
+    function initIvInteractions() {
+      const hs = $("hm-svg"), ht = $("hm-tip"), hw = $("hm-wrap");
+      hs.addEventListener("mousemove", (e) => {
+        if (!hmState) return;
+        const { grid, slots, padL, padT, cw, cellH, nR } = hmState;
+        const rect = hs.getBoundingClientRect();
+        const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+        const ri = Math.floor((my - padT) / cellH), ci = Math.floor((mx - padL) / cw);
+        if (ri < 0 || ri >= nR || ci < 0 || ci >= slots.length) { ht.style.display = "none"; return; }
+        const g = grid[ri], cell = g.row[ci], v = ivVal(cell);
+        ht.innerHTML = `<b>${g.day} ${slots[ci]}</b><br>`
+          + (v == null ? `<span style="color:var(--muted)">该时段无数据（当日首根无前收）</span>`
+                       : `${ivMetric === "vol" ? "波动率" : IVCFG.volLabel} <b>${ivFmt(v)}</b>`)
+          + `<br><span style="color:var(--muted)">当日 RV ${(g.rv * 100).toFixed(2)}% · ${IVCFG.volLabel} ${IVCFG.fmtVol(g.vol)}</span>`;
+        ht.style.display = "block";
+        ht.style.left = `${Math.min(mx + 14, hw.clientWidth - 210)}px`;
+        ht.style.top = `${my + 16}px`;
+      });
+      hs.addEventListener("mouseleave", () => { ht.style.display = "none"; });
+      hs.addEventListener("click", (e) => {
+        if (!hmState) return;
+        const { grid, padT, cellH, nR } = hmState;
+        const ri = Math.floor((e.clientY - hs.getBoundingClientRect().top - padT) / cellH);
+        if (ri < 0 || ri >= nR) return;
+        ivSel = grid[ri].day;
+        renderHeatmap(); renderProfile();
+      });
+
+      const ps = $("prof-svg"), pt = $("prof-tip"), pw = $("prof-wrap");
+      ps.addEventListener("mousemove", (e) => {
+        if (!profState) return;
+        const { q, curVals, slots, padL, plotW, nC, cur } = profState;
+        const rect = ps.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const i = clamp(Math.round((mx - padL) / (plotW / nC) - 0.5), 0, nC - 1);
+        const cv = curVals[i], qq = q[i];
+        pt.innerHTML = `<b>${slots[i]}</b><br>`
+          + `${cur.day}：<b style="color:var(--blue)">${cv == null ? "—" : ivFmt(cv)}</b><br>`
+          + (qq ? `<span style="color:var(--muted)">中位 ${ivFmt(qq.p50)} · 常态区 ${ivFmt(qq.p25)}–${ivFmt(qq.p75)}</span>`
+                : `<span style="color:var(--muted)">无历史分位</span>`);
+        pt.style.display = "block";
+        pt.style.left = `${Math.min(mx + 14, pw.clientWidth - 200)}px`;
+        pt.style.top = `8px`;
+      });
+      ps.addEventListener("mouseleave", () => { pt.style.display = "none"; });
+
+      const seg = (id, attr, apply) => $(id).addEventListener("click", (e) => {
+        const b = e.target.closest("button"); if (!b || !ivData) return;
+        [...$(id).querySelectorAll("button")].forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+        apply(b.dataset[attr]);
+        const days = ivData.days.slice(-ivWin);
+        if (!days.some((d) => d.day === ivSel)) ivSel = days.length ? days[days.length - 1].day : null;
+        renderHeatmap(); renderProfile();
+      });
+      seg("iv-days", "d", (v) => { ivWin = clamp(Number(v) || IV_MAXD, 1, IV_MAXD); });
+      seg("iv-metric", "m", (v) => { ivMetric = v === "turn" ? "turn" : "vol"; });
+
+      let rt = null;
+      window.addEventListener("resize", () => {
+        if (!ivData) return;
+        clearTimeout(rt);
+        rt = setTimeout(() => { renderHeatmap(); renderProfile(); }, 160);
+      });
+    }
+
+    async function initIntraday(sym) {
+      const msg = $("iv-msg");
+      try {
+        const kl = await fetchIvBars(sym);
+        if (!kl) throw new Error("该股暂无 5 分钟数据（数据源未收录或代码无法解析）");
+        const parsed = parseIvBars(kl);
+        if (parsed.days.length < 1 || parsed.slots.length < 4) throw new Error("5 分钟数据太少，无法绘制");
+        ivData = parsed;
+        ivSel = ivData.days[ivData.days.length - 1].day;
+        ivWin = Math.min(IV_MAXD, ivData.days.length);
+        msg.hidden = true;
+        $("hm-wrap").hidden = false; $("iv-sub").hidden = false; $("prof-wrap").hidden = false;
+        renderHeatmap();
+        renderProfile();
+      } catch (e) {
+        console.error(e);
+        msg.textContent = `5 分钟波动率图不可用：${e.message || e}`;
+      }
+    }
+
     // ---------- 主流程 ----------
     // 一次拉 5 年日线存 fullBars；改窗口时只切片重算，不重新下载
     let fullBars = [], gFlt = 0, gBkMap = null;
@@ -496,6 +877,8 @@
       $("sym").textContent = SYM;
       setStatus(`正在加载 ${SYM} 的日线与元数据…`);
       initChipTooltip();
+      initIvInteractions();
+      initIntraday(SYM);              // 独立于日线，并行加载；失败只影响该面板
       try {
         const [raw, meta, bkData] = await Promise.all([fetchDaily(SYM), fetchMeta(SYM), fetchBk(SYM)]);
         if (!raw) throw new Error("拿不到该股的日线数据（代码可能不存在或已退市）");
