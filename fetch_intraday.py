@@ -53,7 +53,9 @@ def pick_universe():
     rows = [r for r in rows if r.get("s") and (r.get("dollarVolume") or 0) > 0]
     rows.sort(key=lambda r: r.get("dollarVolume") or 0, reverse=True)
     picked = rows[:UNIVERSE]
-    meta = {r["s"]: {"n": r.get("n"), "price": r.get("price")} for r in picked}
+    # flt = 流通股，用于把每根 bar 的成交量换算成换手率
+    meta = {r["s"]: {"n": r.get("n"), "price": r.get("price"),
+                     "flt": (r.get("float") or r.get("sharesOut") or 0)} for r in picked}
     return [r["s"] for r in picked], meta, latest
 
 
@@ -134,11 +136,15 @@ def rms(vals):
     return round(math.sqrt(sum(v * v for v in vals) / len(vals)), 3)
 
 
-def write_detail(sym, name, rv, latest):
+def write_detail(sym, name, rv, latest, flt):
     """每只股票单独写一个逐 bar 明细文件，供个股页热力图按需取（排名页不加载它）。
 
     bar 已经在内存里（算 rv 时用的就是它），这里只是不再丢弃。
     r 存基点整数（|对数收益|×10000），null = 当天第一根；vt 为当日总成交量。
+    t 存「占流通盘的百万分之几」整数（成交量/流通股×1e6），即 5 分钟换手率——
+    比直接存成交量省得多（3-4 位 vs 6-8 位），且前端要的就是这个比率。
+    注意：5 分钟 bar 只覆盖盘中常规时段，合计约为官方日换手率的 ~78%
+    （差额来自盘前盘后与非交易所成交），跨时段比较不受影响。
     """
     days = rv[-DETAIL_DAYS:]
     slots = sorted({s for day in days for s, _, _ in day["bars"]})
@@ -146,15 +152,20 @@ def write_detail(sym, name, rv, latest):
     out_days = []
     for day in days:
         r = [None] * len(slots)
-        for s, rr, _ in day["bars"]:
+        t = [None] * len(slots)
+        for s, rr, vv in day["bars"]:
+            k = idx[s]
             if rr is not None:
-                r[idx[s]] = round(rr * 10000)
+                r[k] = round(rr * 10000)
+            if flt > 0 and vv > 0:
+                t[k] = round(vv / flt * 1e6)
         # 逐 bar 成交量不存：实测会让明细体积涨 3 倍，而热力图只需要波动率。
         # 只留当日总量（tooltip 用），一个整数几乎不占地方。
         out_days.append({"d": day["d"], "rv": round(day["rv"] * 100, 3),
-                         "vt": int(sum(v for _, _, v in day["bars"])), "r": r})
+                         "vt": int(sum(v for _, _, v in day["bars"])), "r": r, "t": t})
     payload = {
         "s": sym, "n": name, "asOf": latest, "interval": INTERVAL, "tz": str(EASTERN),
+        "flt": int(flt),
         "slots": slots, "days": out_days,
     }
     with open(os.path.join(DETAIL_DIR, f"{sym}.json"), "w", encoding="utf-8") as f:
@@ -184,7 +195,7 @@ def build():
                 "dates": [d["d"] for d in rv][-22:],
                 "days": len(series),
             }
-            write_detail(sym, meta[sym]["n"], rv, latest)
+            write_detail(sym, meta[sym]["n"], rv, latest, meta[sym]["flt"])
             ok += 1
         if i % 50 == 0:
             print(f"  进度 {i}/{len(symbols)}，成功 {ok}")

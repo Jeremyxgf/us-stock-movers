@@ -101,11 +101,13 @@ def rms(vals):
     return round(math.sqrt(sum(v * v for v in vals) / len(vals)), 3)
 
 
-def write_detail(code, name, rv, latest):
+def write_detail(code, name, rv, latest, flt):
     """每只股票单独写逐 bar 明细，供个股页热力图按需取（排名页不加载它）。
 
     bar 算 rv 时已在内存里，这里只是不再丢弃。r 存基点整数（|对数收益|×10000），
-    null = 当天第一根；vt 为当日总成交量。A 股午休时段天然不出现在 slots 里，前端据间隔画分隔线。
+    null = 当天第一根；vt 为当日总成交量。
+    t 存「占流通盘的百万分之几」整数（成交量/流通股×1e6），即 5 分钟换手率。
+    A 股 5 分钟量合计 == 日成交量，故逐格 t 求和 == 当日换手率（已与快照 turnover 字段对账）。A 股午休时段天然不出现在 slots 里，前端据间隔画分隔线。
     """
     days = rv[-DETAIL_DAYS:]
     slots = sorted({s for day in days for s, _, _ in day["bars"]})
@@ -113,14 +115,19 @@ def write_detail(code, name, rv, latest):
     out_days = []
     for day in days:
         r = [None] * len(slots)
-        for s, rr, _ in day["bars"]:
+        t = [None] * len(slots)
+        for s, rr, vv in day["bars"]:
+            k = idx[s]
             if rr is not None:
-                r[idx[s]] = round(rr * 10000)
+                r[k] = round(rr * 10000)
+            if flt > 0 and vv > 0:
+                t[k] = round(vv / flt * 1e6)
         # 逐 bar 成交量不存：实测会让明细体积涨 3 倍，而热力图只需要波动率。
         # 只留当日总量（tooltip 用），一个整数几乎不占地方。
         out_days.append({"d": day["d"], "rv": round(day["rv"] * 100, 3),
-                         "vt": int(sum(v for _, _, v in day["bars"])), "r": r})
+                         "vt": int(sum(v for _, _, v in day["bars"])), "r": r, "t": t})
     payload = {"s": code, "n": name, "asOf": latest, "interval": "5m", "tz": "Asia/Shanghai",
+               "flt": int(flt),
                "slots": slots, "days": out_days}
     with open(os.path.join(DETAIL_DIR, f"{code}.json"), "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
@@ -146,7 +153,9 @@ def build():
                 "rv": series[-22:], "bk": bks[-22:],
                 "dates": [d["d"] for d in rv][-22:], "days": len(series),
             }
-            write_detail(r["s"], r.get("n"), rv, latest)
+            # A 股流通股数 = 流通市值 / 现价
+            flt = (r.get("floatCap") or 0) / r["price"] if r.get("price") else 0
+            write_detail(r["s"], r.get("n"), rv, latest, flt)
             ok += 1
         if i % 50 == 0:
             print(f"  进度 {i}/{len(picked)}，成功 {ok}")
