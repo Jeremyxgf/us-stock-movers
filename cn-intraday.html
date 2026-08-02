@@ -75,7 +75,7 @@
     <header>
       <div>
         <h1>A股日内波动率排名</h1>
-        <p class="subtitle">基于分钟数据的日内已实现波动率，按 1日 / 5日 / 1月平均排名。<a class="backlink" href="./cn-index.html">← 返回 A股榜单</a></p>
+        <p class="subtitle">基于分钟数据的日内已实现波动率，按 1日 / 5日 / 1月 RMS 排名。<a class="backlink" href="./cn-index.html">← 返回 A股榜单</a></p>
       </div>
       <div class="stamp" aria-label="数据状态">
         <b id="as-of">加载中…</b>
@@ -92,8 +92,8 @@
         排序依据
         <select id="sort-by">
           <option value="iv1d">近1日日内波动率</option>
-          <option value="iv5d">近5日平均</option>
-          <option value="iv1m" selected>近1月平均</option>
+          <option value="iv5d">近5日 RMS</option>
+          <option value="iv1m" selected>近1月 RMS</option>
         </select>
       </label>
       <button type="submit" style="min-height:42px;border:0;border-radius:8px;padding:0 18px;background:var(--blue);color:#fff;font:inherit;font-weight:750;cursor:pointer">刷新</button>
@@ -114,8 +114,8 @@
               <th class="name">公司</th>
               <th class="sortable" data-key="price">收盘价<span class="arrow"></span></th>
               <th class="sortable" data-key="iv1d">近1日<span class="arrow"></span></th>
-              <th class="sortable" data-key="iv5d">近5日均<span class="arrow"></span></th>
-              <th class="sortable" data-key="iv1m">近1月均<span class="arrow"></span></th>
+              <th class="sortable" data-key="iv5d">近5日RMS<span class="arrow"></span></th>
+              <th class="sortable" data-key="iv1m">近1月RMS<span class="arrow"></span></th>
               <th class="spark">近一月走势</th>
             </tr>
           </thead>
@@ -126,8 +126,9 @@
 
     <p class="note">
       「日内波动率」= 当天分钟级<strong>已实现波动率</strong> RV = √(Σ 5分钟对数收益²)，以日 % 表示（≈ 当天日内典型波动幅度）。
-      近5日/近1月为按交易日的平均。数据源：<a href="https://finance.sina.com.cn/">新浪财经</a> 5 分钟 K 线，每个交易日收盘后由
-      <code>fetch_intraday.py</code> 抓一次并存 <code>data/intraday.json</code>。股票池为按成交额取的最活跃约 500 只（非全市场）。本页仅供参考，不构成投资建议。
+      近5日/近1月为各交易日 RV 的<strong>均方根</strong>（RMS = √(Σ RV²/N)）——波动率不能直接算术平均，可加的是方差。均不年化。
+      数据源：<a href="https://finance.sina.com.cn/">新浪财经</a> 5 分钟 K 线，每个交易日收盘后由
+      <code>cn_fetch_intraday.py</code> 抓一次并存 <code>data/cn/intraday.json</code>。股票池为按成交额取的最活跃约 500 只（非全市场）。本页仅供参考，不构成投资建议。
     </p>
   </main>
 
@@ -143,7 +144,7 @@
       meta: document.getElementById("meta"),
       body: document.getElementById("body"),
     };
-    const LABELS = { price: "收盘价", iv1d: "近1日日内波动率", iv5d: "近5日平均", iv1m: "近1月平均" };
+    const LABELS = { price: "收盘价", iv1d: "近1日日内波动率", iv5d: "近5日 RMS", iv1m: "近1月 RMS" };
     let sortKey = "iv1m", sortDir = "desc";
     let rows = [];
 

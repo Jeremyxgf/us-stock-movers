@@ -8,7 +8,9 @@
   - 每只用 Yahoo 5 分钟 K 线（interval=5m&range=1mo，一次请求覆盖约一个月）。
   - 把分钟 bar 按美东交易日分组，算每天的已实现日内波动率
     RV_d = sqrt(Σ r_i²)，r_i 为日内相邻 5 分钟收盘价的对数收益（不跨隔夜）。
-  - iv1d = 最近一天 RV；iv5d = 最近 5 天平均；iv1m = 最近约 22 天平均。均以「日 %」表示。
+  - iv1d = 最近一天 RV；iv5d = 最近 5 天、iv1m = 最近约 22 天的 RV 均方根（RMS）。
+    多日合并用 RMS 而非算术平均：可加的是方差，√(Σ RV²/N) 才是这段时间的整体波动水平。
+    均以「日 %」表示（不年化）。
 
 只用 Python 标准库（urllib/json/zoneinfo）。数据源是 Yahoo 非官方免费接口，仅服务端使用。
 """
@@ -116,6 +118,11 @@ def daily_realized_vol(payload):
     return out
 
 
+def rms(vals):
+    """多日波动率的合并：波动率不能直接算术平均，可加的是方差 → 先平方取均值再开根。"""
+    return round(math.sqrt(sum(v * v for v in vals) / len(vals)), 3)
+
+
 def build():
     symbols, meta, latest = pick_universe()
     print(f"股票池 {len(symbols)} 只（按成交额），基准交易日 {latest}")
@@ -128,8 +135,8 @@ def build():
             series = [round(v * 100, 3) for _, v, _ in rv]   # 日 %
             bks = [round(b, 3) if b is not None else None for _, _, b in rv]
             iv1d = series[-1]
-            iv5d = round(sum(series[-5:]) / len(series[-5:]), 3)
-            iv1m = round(sum(series) / len(series), 3)
+            iv5d = rms(series[-5:])
+            iv1m = rms(series)
             stocks[sym] = {
                 "n": meta[sym]["n"], "price": meta[sym]["price"],
                 "iv1d": iv1d, "iv5d": iv5d, "iv1m": iv1m,

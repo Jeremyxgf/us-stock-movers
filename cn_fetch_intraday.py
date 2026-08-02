@@ -2,6 +2,7 @@
 """
 A 股日内波动率：读 data/cn 活跃池，逐股取东财 5 分钟 K，算每交易日已实现日内波动率
 RV=√(Σ5分钟对数收益²) 与大单占比 bk，写 data/cn/intraday.json。对应美股 fetch_intraday.py。
+多日口径 iv5d/iv1m 用 RV 的均方根（RMS）而非算术平均：可加的是方差。均为「日 %」，不年化。
 
 数据源：新浪 5 分钟 K（getKLineData scale=5，抗封）。只用 Python 标准库。
 """
@@ -82,6 +83,11 @@ def daily_rv(klines):
     return out
 
 
+def rms(vals):
+    """多日波动率的合并：波动率不能直接算术平均，可加的是方差 → 先平方取均值再开根。"""
+    return round(math.sqrt(sum(v * v for v in vals) / len(vals)), 3)
+
+
 def build():
     rows, latest = latest_snapshot()
     picked = rows[:UNIVERSE]
@@ -96,8 +102,8 @@ def build():
             stocks[r["s"]] = {
                 "n": r.get("n"), "price": r.get("price"),
                 "iv1d": series[-1],
-                "iv5d": round(sum(series[-5:]) / len(series[-5:]), 3),
-                "iv1m": round(sum(series) / len(series), 3),
+                "iv5d": rms(series[-5:]),
+                "iv1m": rms(series),
                 "rv": series[-22:], "bk": bks[-22:],
                 "dates": [d for d, _, _ in rv][-22:], "days": len(series),
             }
