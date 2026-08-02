@@ -28,6 +28,8 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+DETAIL_DIR = os.path.join(DATA_DIR, "intraday")   # 每股逐 bar 明细（个股页热力图按需取）
+DETAIL_DAYS = 22        # 明细保留的交易日数
 UNIVERSE = 500          # 股票池大小（按成交额取最活跃前 N）
 INTERVAL = "5m"
 RANGE = "1mo"
@@ -77,8 +79,13 @@ def fetch_chart(symbol: str):
 
 
 def daily_realized_vol(payload):
-    """把分钟 bar 按美东交易日分组，返回 [(date, RV_日%, bk大单占比), ...] 升序。
+    """把分钟 bar 按美东交易日分组，返回逐日 dict 列表（升序）：
 
+        {"d": "2026-07-31", "rv": 0.0742, "bk": 0.31,
+         "bars": [(时段"09:35", 对数收益绝对值|None, 成交量), ...]}
+
+    rv = √(Σ 日内相邻 5 分钟对数收益²)；bars 是构成它的每一根明细（个股页热力图用，
+    一天的 bars 各项平方和开根恰好等于当天的 rv）。每天第一根无前收 → r 为 None。
     bk = 当天成交量中，落在「量 ≥ 3×当日 bar 中位量」的 5 分钟 bar 里的比例，
     作为大单/机构活动的代理指标（真实逐笔数据免费拿不到）。
     """
@@ -90,31 +97,35 @@ def daily_realized_vol(payload):
         vols = quote.get("volume") or []
     except (KeyError, IndexError, TypeError):
         return []
-    by_day = defaultdict(list)   # date -> [(epoch, close, vol)]
+    by_day = defaultdict(list)   # date -> [(epoch, 时段, close, vol)]
     for t, c, v in zip(ts, closes, vols):
         if c is None:
             continue
-        d = datetime.fromtimestamp(t, timezone.utc).astimezone(EASTERN).date()
-        by_day[d].append((t, c, v or 0))
+        et = datetime.fromtimestamp(t, timezone.utc).astimezone(EASTERN)
+        by_day[et.date()].append((t, et.strftime("%H:%M"), c, v or 0))
     out = []
     for d in sorted(by_day):
         rows = sorted(by_day[d])
-        seq = [c for _, c, _ in rows]
+        seq = [c for _, _, c, _ in rows]
         if len(seq) < 3:            # bar 太少不可靠
             continue
         rv2 = 0.0
+        bars = [(rows[0][1], None, rows[0][3])]     # 当天第一根无前收，不含隔夜跳空
         for i in range(1, len(seq)):
+            r = None
             if seq[i - 1] > 0 and seq[i] > 0:
-                rv2 += math.log(seq[i] / seq[i - 1]) ** 2
-        bar_vols = sorted(v for _, _, v in rows if v > 0)
+                r = abs(math.log(seq[i] / seq[i - 1]))
+                rv2 += r * r
+            bars.append((rows[i][1], r, rows[i][3]))
+        bar_vols = sorted(v for _, _, _, v in rows if v > 0)
         if bar_vols:
             med = bar_vols[len(bar_vols) // 2]
             tot = sum(bar_vols)
-            big = sum(v for _, _, v in rows if v >= 3 * med)
+            big = sum(v for _, _, _, v in rows if v >= 3 * med)
             bk = big / tot if tot > 0 else None
         else:
             bk = None
-        out.append((d.isoformat(), math.sqrt(rv2), bk))
+        out.append({"d": d.isoformat(), "rv": math.sqrt(rv2), "bk": bk, "bars": bars})
     return out
 
 
@@ -123,8 +134,36 @@ def rms(vals):
     return round(math.sqrt(sum(v * v for v in vals) / len(vals)), 3)
 
 
+def write_detail(sym, name, rv, latest):
+    """每只股票单独写一个逐 bar 明细文件，供个股页热力图按需取（排名页不加载它）。
+
+    bar 已经在内存里（算 rv 时用的就是它），这里只是不再丢弃。
+    r 存基点整数（|对数收益|×10000），null = 当天第一根；vt 为当日总成交量。
+    """
+    days = rv[-DETAIL_DAYS:]
+    slots = sorted({s for day in days for s, _, _ in day["bars"]})
+    idx = {s: i for i, s in enumerate(slots)}
+    out_days = []
+    for day in days:
+        r = [None] * len(slots)
+        for s, rr, _ in day["bars"]:
+            if rr is not None:
+                r[idx[s]] = round(rr * 10000)
+        # 逐 bar 成交量不存：实测会让明细体积涨 3 倍，而热力图只需要波动率。
+        # 只留当日总量（tooltip 用），一个整数几乎不占地方。
+        out_days.append({"d": day["d"], "rv": round(day["rv"] * 100, 3),
+                         "vt": int(sum(v for _, _, v in day["bars"])), "r": r})
+    payload = {
+        "s": sym, "n": name, "asOf": latest, "interval": INTERVAL, "tz": str(EASTERN),
+        "slots": slots, "days": out_days,
+    }
+    with open(os.path.join(DETAIL_DIR, f"{sym}.json"), "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
+
+
 def build():
     symbols, meta, latest = pick_universe()
+    os.makedirs(DETAIL_DIR, exist_ok=True)
     print(f"股票池 {len(symbols)} 只（按成交额），基准交易日 {latest}")
     stocks = {}
     ok = 0
@@ -132,8 +171,8 @@ def build():
         payload = fetch_chart(sym)
         rv = daily_realized_vol(payload) if payload else []
         if rv:
-            series = [round(v * 100, 3) for _, v, _ in rv]   # 日 %
-            bks = [round(b, 3) if b is not None else None for _, _, b in rv]
+            series = [round(d["rv"] * 100, 3) for d in rv]   # 日 %
+            bks = [round(d["bk"], 3) if d["bk"] is not None else None for d in rv]
             iv1d = series[-1]
             iv5d = rms(series[-5:])
             iv1m = rms(series)
@@ -142,9 +181,10 @@ def build():
                 "iv1d": iv1d, "iv5d": iv5d, "iv1m": iv1m,
                 "rv": series[-22:],          # 迷你走势用
                 "bk": bks[-22:],             # 大 bar 成交占比（机构大单代理），与 rv 同窗
-                "dates": [d for d, _, _ in rv][-22:],
+                "dates": [d["d"] for d in rv][-22:],
                 "days": len(series),
             }
+            write_detail(sym, meta[sym]["n"], rv, latest)
             ok += 1
         if i % 50 == 0:
             print(f"  进度 {i}/{len(symbols)}，成功 {ok}")
@@ -162,6 +202,16 @@ def build():
         json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
     size_kb = os.path.getsize(path) / 1024
     print(f"已写入 {path}（成功 {ok}/{len(symbols)} 只，{size_kb:.0f} KB）")
+
+    # 池子会随成交额变动，清掉已不在池内的旧明细文件，避免目录无限膨胀
+    stale = 0
+    for fn in os.listdir(DETAIL_DIR):
+        if fn.endswith(".json") and fn[:-5] not in stocks:
+            os.remove(os.path.join(DETAIL_DIR, fn))
+            stale += 1
+    total_mb = sum(os.path.getsize(os.path.join(DETAIL_DIR, f))
+                   for f in os.listdir(DETAIL_DIR)) / 1024 / 1024
+    print(f"逐 bar 明细：{DETAIL_DIR} 共 {len(stocks)} 个文件 {total_mb:.1f} MB（清理过期 {stale} 个）")
 
 
 if __name__ == "__main__":

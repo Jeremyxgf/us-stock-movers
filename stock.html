@@ -188,10 +188,6 @@
             <button type="button" data-d="10">近10日</button>
             <button type="button" data-d="22" aria-pressed="true">近22日</button>
           </span>
-          <span class="seg" id="iv-metric" role="group" aria-label="指标">
-            <button type="button" data-m="vol" aria-pressed="true">波动率</button>
-            <button type="button" data-m="turn">成交量</button>
-          </span>
           <span class="iv-scale"><span>低</span><span class="ramp" id="iv-ramp"></span><span id="iv-hi">–</span></span>
         </span>
       </div>
@@ -222,7 +218,7 @@
       <strong>热力图任一行的各格平方和再开根，就是该日的 RV</strong>（悬浮行首可见该日 RV，可自行对账）。
       热力图色阶上限取窗口内 P98（避免单根尖峰把整图冲淡），超出者按最深色封顶。
       剖面图的中位线与 P25–P75 带按同一时段跨所选天数统计，用于判断当日某时段是「一贯如此」还是「异常放大」。
-      数据源：东方财富 5 分钟 K（浏览器按需直取），与日内波动率页的 Yahoo 数据源不同，同一天的数值可能有小幅差异。
+      数据源：与「日内波动率」页<strong>同一条管线</strong>（fetch_intraday.py 抓 Yahoo 5 分钟 K），个股页只取自己那一个明细文件；故两页数值严格一致。仅覆盖最活跃 500 池，池外股票不显示此图。
     </p>
 
     <p class="note" id="method">
@@ -532,88 +528,45 @@
     }
 
     // ================= 5 分钟波动率热力图 + 时段剖面 =================
-    // 数据：东财 push2his kline（klt=5，CORS 开放，浏览器按需直取，不进管线）
-    // 口径：单 bar 波动率 = |ln(cᵢ/cᵢ₋₁)|，仅日内相邻 → 一行平方和开根 = 该日 RV
-    const EM_KLINE = "https://push2his.eastmoney.com/api/qt/stock/kline/get";
+    // 数据来自我们自己的管线：fetch_intraday.py 抓 5 分钟 bar 算 RV 时，把构成 RV 的
+    // 每一根明细也写进 data/intraday/<代码>.json（零额外请求，只是不再丢弃）。
+    // 因此与「日内波动率」页同源同口径：某天各格平方和开根 == 该页那只股当天的 RV。
     const IV_RAMP = ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"];
     const IV_BLANK = "#f1f3f7";      // 无数据 / 当日首根（无前收）
     const IV_MAXD = 22;
 
-    // 市场适配层：美股快照没有交易所字段，secid 前缀只能依次试（105 纳斯达克 / 106 纽交所 / 107 美交所）
+    const DETAIL_BASE = "./data/intraday";
     const IVCFG = {
-      tz: "America/New_York",
       volLabel: "成交量",
-      secids: (s) => {
-        const bases = [...new Set([s, s.replace(/\./g, "_"), s.replace(/\./g, "-")])];
-        return ["105", "106", "107"].flatMap((p) => bases.map((b) => `${p}.${b}`));
-      },
       fmtVol: (v) => v >= 1e9 ? `${(v / 1e9).toFixed(2)}B` : v >= 1e6 ? `${(v / 1e6).toFixed(2)}M`
                    : v >= 1e3 ? `${(v / 1e3).toFixed(1)}K` : String(Math.round(v)),
     };
 
-    let ivData = null;                              // { days:[{day,cells,rv}], slots:[] }
-    let ivWin = IV_MAXD, ivMetric = "vol", ivSel = null;
+    let ivData = null;                              // { slots:[], days:[{day,rv,vol,row:[]}] }
+    let ivWin = IV_MAXD, ivSel = null;
 
-    async function emKlines(secid, lmt) {
-      const url = `${EM_KLINE}?secid=${encodeURIComponent(secid)}`
-        + `&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56,f57&klt=5&fqt=1&lmt=${lmt}&end=20500101`;
-      const r = await fetch(url);
+    // 明细文件里 r 是基点整数（|对数收益|×10000），null = 当天第一根；数组已按 slots 对齐
+    async function fetchIvDetail(sym) {
+      const r = await fetch(`${DETAIL_BASE}/${encodeURIComponent(sym)}.json`);
       if (!r.ok) return null;
       const j = await r.json();
-      const kl = j && j.data && j.data.klines;
-      return (kl && kl.length) ? kl : null;
+      if (!j || !Array.isArray(j.slots) || !Array.isArray(j.days) || !j.days.length) return null;
+      return {
+        slots: j.slots,
+        days: j.days.map((d) => ({
+          day: d.d,
+          rv: (d.rv || 0) / 100,                    // 文件里存的是日 %，内部统一用小数
+          vol: d.vt || 0,
+          row: (d.r || []).map((bp) => (bp == null ? null : bp / 10000)),
+        })),
+      };
     }
 
-    async function fetchIvBars(sym) {
-      for (const secid of IVCFG.secids(sym)) {
-        try { const kl = await emKlines(secid, IV_MAXD * 80); if (kl) return kl; } catch { /* 试下一个 */ }
-      }
-      return null;
-    }
-
-    // "YYYY-MM-DD HH:MM,开,收,高,低,量,额" → 按交易日分组，逐 bar 算 |对数收益|
-    // 东财时间戳一律北京时间（美股 16:00 EDT 记作次日 04:00），故先还原成 epoch 再按市场本地时区切日/取时段
-    function parseIvBars(klines) {
-      const dayF = new Intl.DateTimeFormat("en-CA", { timeZone: IVCFG.tz, year: "numeric", month: "2-digit", day: "2-digit" });
-      const slotF = new Intl.DateTimeFormat("en-GB", { timeZone: IVCFG.tz, hour: "2-digit", minute: "2-digit", hour12: false });
-      const byDay = new Map();
-      for (const row of klines) {
-        const p = row.split(",");
-        const m = /^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})/.exec(p[0]);
-        if (!m) continue;
-        const c = +p[2], v = +p[5];
-        if (!(c > 0)) continue;
-        const epoch = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) - 8 * 3600e3;
-        const d = new Date(epoch);
-        const day = dayF.format(d);
-        if (!byDay.has(day)) byDay.set(day, []);
-        byDay.get(day).push({ slot: slotF.format(d), epoch, c, v: v > 0 ? v : 0 });
-      }
-      const days = [...byDay.keys()].sort().map((day) => {
-        const rows = byDay.get(day).sort((a, b) => a.epoch - b.epoch);
-        let rv2 = 0;
-        const cells = rows.map((b, i) => {
-          let r = null;
-          if (i > 0 && rows[i - 1].c > 0) { r = Math.abs(Math.log(b.c / rows[i - 1].c)); rv2 += r * r; }
-          return { slot: b.slot, r, v: b.v };
-        });
-        return { day, cells, rv: Math.sqrt(rv2), vol: rows.reduce((a, b) => a + b.v, 0) };
-      }).filter((d) => d.cells.length >= 3);
-      const slotSet = new Set();
-      days.forEach((d) => d.cells.forEach((c) => slotSet.add(c.slot)));
-      return { days, slots: [...slotSet].sort() };   // 时段字符串同日内可直接字典序（A股午休自然压缩）
-    }
-
-    const ivVal = (cell) => cell == null ? null
-      : ivMetric === "vol" ? (cell.r == null ? null : cell.r * 100) : (cell.v > 0 ? cell.v : null);
-    const ivFmt = (v) => ivMetric === "vol" ? `${v.toFixed(2)}%` : IVCFG.fmtVol(v);
+    const ivVal = (r) => (r == null ? null : r * 100);      // 小数 → 日内 %
+    const ivFmt = (v) => `${v.toFixed(2)}%`;
 
     function ivWindow() {
-      const days = ivData.days.slice(-ivWin);
-      const grid = days.map((d) => {
-        const byslot = new Map(d.cells.map((c) => [c.slot, c]));
-        return { day: d.day, rv: d.rv, vol: d.vol, row: ivData.slots.map((s) => byslot.get(s) || null) };
-      });
+      const grid = ivData.days.slice(-ivWin);       // row 已按 slots 对齐，无需再映射
       const flat = grid.flatMap((g) => g.row.map(ivVal)).filter((v) => v != null && v > 0).sort((a, b) => a - b);
       const cap = flat.length ? flat[Math.min(flat.length - 1, Math.floor(flat.length * 0.98))] : 1;
       return { grid, cap: cap > 0 ? cap : 1 };
@@ -676,8 +629,7 @@
              + ` font-size="10.5" fill="var(--muted)">${slots[ci]}</text>`;
       });
       svg.innerHTML = els;
-      $("iv-title").textContent = `5 分钟${ivMetric === "vol" ? "波动率" : IVCFG.volLabel}热力图`
-        + `（${nR} 个交易日 × ${nC} 个时段）`;
+      $("iv-title").textContent = `5 分钟波动率热力图（${nR} 个交易日 × ${nC} 个时段）`;
       $("iv-hi").textContent = `高 ≥ ${ivFmt(cap)}`;
       $("iv-ramp").style.background = `linear-gradient(90deg, ${IV_RAMP.join(",")})`;
       hmState = { grid, cap, slots, padL, padT, cw, cellH, nR };
@@ -744,9 +696,7 @@
         els += `<text x="${x(ci).toFixed(1)}" y="${H - 7}" text-anchor="middle" font-size="10.5" fill="var(--muted)">${slots[ci]}</text>`;
       });
       svg.innerHTML = els;
-      $("prof-title").textContent = ivMetric === "vol"
-        ? `时段剖面：${cur.day}（当日 RV ${(cur.rv * 100).toFixed(2)}%）`
-        : `时段剖面：${cur.day}（当日${IVCFG.volLabel} ${IVCFG.fmtVol(cur.vol)}）`;
+      $("prof-title").textContent = `时段剖面：${cur.day}（当日 RV ${(cur.rv * 100).toFixed(2)}%）`;
       $("iv-legend-n").textContent = `近${grid.length}日`;
       profState = { q, curVals, slots, padL, plotW, nC, cur };
     }
@@ -764,7 +714,7 @@
         const g = grid[ri], cell = g.row[ci], v = ivVal(cell);
         ht.innerHTML = `<b>${g.day} ${slots[ci]}</b><br>`
           + (v == null ? `<span style="color:var(--muted)">该时段无数据（当日首根无前收）</span>`
-                       : `${ivMetric === "vol" ? "波动率" : IVCFG.volLabel} <b>${ivFmt(v)}</b>`)
+                       : `波动率 <b>${ivFmt(v)}</b>`)
           + `<br><span style="color:var(--muted)">当日 RV ${(g.rv * 100).toFixed(2)}% · ${IVCFG.volLabel} ${IVCFG.fmtVol(g.vol)}</span>`;
         ht.style.display = "block";
         ht.style.left = `${Math.min(mx + 14, hw.clientWidth - 210)}px`;
@@ -807,7 +757,6 @@
         renderHeatmap(); renderProfile();
       });
       seg("iv-days", "d", (v) => { ivWin = clamp(Number(v) || IV_MAXD, 1, IV_MAXD); });
-      seg("iv-metric", "m", (v) => { ivMetric = v === "turn" ? "turn" : "vol"; });
 
       let rt = null;
       window.addEventListener("resize", () => {
@@ -820,11 +769,10 @@
     async function initIntraday(sym) {
       const msg = $("iv-msg");
       try {
-        const kl = await fetchIvBars(sym);
-        if (!kl) throw new Error("该股暂无 5 分钟数据（数据源未收录或代码无法解析）");
-        const parsed = parseIvBars(kl);
-        if (parsed.days.length < 1 || parsed.slots.length < 4) throw new Error("5 分钟数据太少，无法绘制");
-        ivData = parsed;
+        const d = await fetchIvDetail(sym);
+        if (!d) throw new Error("该股不在最活跃 500 池内，暂无 5 分钟明细");
+        if (d.slots.length < 4) throw new Error("5 分钟数据太少，无法绘制");
+        ivData = d;
         ivSel = ivData.days[ivData.days.length - 1].day;
         ivWin = Math.min(IV_MAXD, ivData.days.length);
         msg.hidden = true;
