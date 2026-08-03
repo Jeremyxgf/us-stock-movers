@@ -638,16 +638,24 @@
         return { grid, cap: cap > 0 ? cap : 1 };
       };
 
+      // 右侧栏：每行一根横条 = 当日汇总（波动率面板画 RV，换手率面板画当日换手率），
+      // 与热力图共用行轴，22 天的走势一眼可见。长度编码数值，故颜色保持单一不重复编码。
+      const BARW = 76, BARGAP = 16, LBLW = 46;
+
       function renderHeatmap() {
         const { grid, cap } = window_();
         const svg = el("hm-svg"), slots = ivData.slots, nC = slots.length, nR = grid.length;
         const W = svg.clientWidth || 1100;
-        const padL = 54, padR = 10, padT = 6, padB = 22;
+        const padL = 54, padR = 10, padT = 20, padB = 22;
         const cellH = clamp(Math.round(348 / Math.max(nR, 1)), 11, 24);
-        const plotW = W - padL - padR, plotH = nR * cellH, H = plotH + padT + padB;
+        const bx0 = W - padR - LBLW - BARW;
+        const plotW = bx0 - BARGAP - padL, plotH = nR * cellH, H = plotH + padT + padB;
         svg.setAttribute("height", H);
         svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
         const cw = plotW / nC, gap = cw > 8 ? 1.5 : 0.5;
+        const dvals = grid.map((g) => cfg.dayVal(g));
+        const dmax = Math.max(...dvals, 1e-12);
+        const dmaxAt = dvals.indexOf(dmax);
         let els = "";
         grid.forEach((g, ri) => {
           const y = padT + ri * cellH;
@@ -661,6 +669,16 @@
                + ` font-weight="${on ? 750 : 400}" fill="${on ? cfg.line : "var(--muted)"}">${g.day.slice(5)}</text>`;
           if (on) els += `<rect x="${padL}" y="${y}" width="${plotW}" height="${cellH}" fill="none"`
                        + ` stroke="${cfg.line}" stroke-width="1.5" rx="2"/>`;
+          // 汇总横条
+          const bw = Math.max(1, dvals[ri] / dmax * BARW);
+          els += `<rect x="${bx0}" y="${(y + gap / 2).toFixed(2)}" width="${bw.toFixed(1)}"`
+               + ` height="${Math.max(1, cellH - gap).toFixed(2)}" rx="2" fill="${cfg.line}"`
+               + ` opacity="${on ? 1 : 0.72}"/>`;
+          // 选择性直标：只标当前选中日与窗口内最高日，其余靠悬浮
+          if (on || ri === dmaxAt) {
+            els += `<text x="${(bx0 + bw + 5).toFixed(1)}" y="${y + cellH / 2 + 3.5}" font-size="10"`
+                 + ` font-weight="${on ? 750 : 600}" fill="${on ? cfg.line : "var(--muted)"}">${cfg.fmt(dvals[ri])}</text>`;
+          }
         });
         ivBreaks(slots).forEach((i) => {
           const bx = (padL + i * cw).toFixed(1);
@@ -671,11 +689,15 @@
           els += `<text x="${(padL + (ci + 0.5) * cw).toFixed(1)}" y="${padT + plotH + 14}" text-anchor="middle"`
                + ` font-size="10.5" fill="var(--muted)">${slots[ci]}</text>`;
         });
+        // 汇总栏的栏头与 0–max 刻度
+        els += `<text x="${bx0}" y="${padT - 7}" font-size="10.5" font-weight="650" fill="var(--muted)">${cfg.dayHead}</text>`;
+        els += `<text x="${bx0}" y="${padT + plotH + 14}" font-size="10" fill="var(--muted)">0</text>`;
+        els += `<text x="${bx0 + BARW}" y="${padT + plotH + 14}" text-anchor="end" font-size="10" fill="var(--muted)">${cfg.fmt(dmax)}</text>`;
         svg.innerHTML = els;
         el("iv-title").textContent = `${cfg.title}（${nR} 个交易日 × ${nC} 个时段）`;
         el("iv-hi").textContent = `高 ≥ ${cfg.fmt(cap)}`;
         el("iv-ramp").style.background = `linear-gradient(90deg, ${cfg.ramp.join(",")})`;
-        hmState = { grid, slots, padL, padT, cw, cellH, nR };
+        hmState = { grid, slots, padL, padT, cw, cellH, nR, bx0 };
       }
 
       function renderProfile() {
@@ -745,12 +767,17 @@
           const rect = hs.getBoundingClientRect();
           const mx = e.clientX - rect.left, my = e.clientY - rect.top;
           const ri = Math.floor((my - padT) / cellH), ci = Math.floor((mx - padL) / cw);
-          if (ri < 0 || ri >= nR || ci < 0 || ci >= slots.length) { ht.style.display = "none"; return; }
-          const g = grid[ri], v = val(g, ci);
-          ht.innerHTML = `<b>${g.day} ${slots[ci]}</b><br>`
-            + (v == null ? `<span style="color:var(--muted)">该时段无数据${cfg.id === "v" ? "（当日首根无前收）" : ""}</span>`
-                         : `${cfg.metricLabel} <b>${cfg.fmt(v)}</b>`)
-            + `<br><span style="color:var(--muted)">当日 RV ${(g.rv * 100).toFixed(2)}% · 换手 ${fmtTurn(g.turn * 100)}</span>`;
+          if (ri < 0 || ri >= nR) { ht.style.display = "none"; return; }
+          const g = grid[ri];
+          const inBar = mx >= hmState.bx0 - 4;          // 悬浮在右侧汇总栏
+          if (!inBar && (ci < 0 || ci >= slots.length)) { ht.style.display = "none"; return; }
+          const v = inBar ? null : val(g, ci);
+          ht.innerHTML = inBar
+            ? `<b>${g.day}</b><br>${cfg.dayHead} <b>${cfg.fmt(cfg.dayVal(g))}</b>`
+            : `<b>${g.day} ${slots[ci]}</b><br>`
+              + (v == null ? `<span style="color:var(--muted)">该时段无数据${cfg.id === "v" ? "（当日首根无前收）" : ""}</span>`
+                           : `${cfg.metricLabel} <b>${cfg.fmt(v)}</b>`);
+          ht.innerHTML += `<br><span style="color:var(--muted)">当日 RV ${(g.rv * 100).toFixed(2)}% · 换手 ${fmtTurn(g.turn * 100)} · 量 ${fmtVol(g.vol)}</span>`;
           ht.style.display = "block";
           ht.style.left = `${Math.min(mx + 14, hw.clientWidth - 230)}px`;
           ht.style.top = `${my + 16}px`;
@@ -805,8 +832,11 @@
       };
     }
 
+    const fmtVol = (v) => v >= 1e8 ? `${(v / 1e8).toFixed(2)}亿` : v >= 1e4 ? `${(v / 1e4).toFixed(1)}万`
+                          : String(Math.round(v));
+
     // 换手率数值跨度大（万分之几到百分之几），按量级选小数位
-    const fmtTurn = (v) => v >= 1 ? `${v.toFixed(2)}%` : v >= 0.1 ? `${v.toFixed(3)}%`
+    const fmtTurn = (v) => v <= 0 ? "0%" : v >= 1 ? `${v.toFixed(2)}%` : v >= 0.1 ? `${v.toFixed(3)}%`
                           : v >= 0.01 ? `${v.toFixed(4)}%` : `${v.toFixed(5)}%`;
 
     const IV_PANELS = [
@@ -816,6 +846,7 @@
         val: (d, i) => (d.r[i] == null ? null : d.r[i] * 100),
         fmt: (v) => `${v.toFixed(2)}%`,
         dayLabel: (d) => `当日 RV ${(d.rv * 100).toFixed(2)}%`,
+        dayHead: "当日 RV", dayVal: (d) => d.rv * 100,
       }),
       makeIvPanel({
         id: "t", ramp: IV_RAMP_T, band: "#f9d7cb", line: "#af4517",
@@ -823,6 +854,7 @@
         val: (d, i) => (d.t[i] == null ? null : d.t[i] * 100),
         fmt: fmtTurn,
         dayLabel: (d) => `当日换手率 ${fmtTurn(d.turn * 100)}`,
+        dayHead: "当日换手", dayVal: (d) => d.turn * 100,
       }),
     ];
 
