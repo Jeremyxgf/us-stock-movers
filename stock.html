@@ -267,6 +267,7 @@
     </p>
   </main>
 
+  <script src="./daily-history.js"></script>
   <script>
     const BINS = 120;
     const qs = new URLSearchParams(location.search);
@@ -284,15 +285,7 @@
 
     // ---------- 数据加载 ----------
     async function fetchDaily(sym) {
-      const hit = async (s) => {
-        const r = await fetch(`https://stockanalysis.com/api/symbol/s/${encodeURIComponent(s)}/history?range=5Y&period=Daily`);
-        if (!r.ok) return null;
-        const j = await r.json();
-        return (j && j.data && j.data.length) ? j.data : null;
-      };
-      let d = await hit(sym);
-      if (!d && sym.includes(".")) d = await hit(sym.replace(/\./g, "-"));
-      return d;
+      return StockHistory.load(sym);
     }
 
     async function fetchMeta(sym) {

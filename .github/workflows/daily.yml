@@ -30,9 +30,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 只有定时/手动触发才抓数据；因编辑网页而 push 时跳过，直接重新部署当前内容
+      # 快照仅定时/手动抓取；push 部署也需 Python，以便日线缓存缺失时重建。
       - name: Set up Python
-        if: github.event_name != 'push'
         uses: actions/setup-python@v5
         with:
           python-version: "3.x"
@@ -40,6 +39,20 @@ jobs:
       - name: Fetch snapshot
         if: github.event_name != 'push'
         run: python3 fetch_snapshot.py
+
+      # 日线只在 CI 抓取，浏览器从本站读取；缓存不提交 Git，避免每日累积数百 MB。
+      - name: Restore daily history
+        uses: actions/cache@v4
+        with:
+          path: data/daily
+          key: daily-history-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: daily-history-v1-
+
+      - name: Fetch daily history
+        run: |
+          if [ "${{ github.event_name }}" != "push" ] || [ ! -f data/daily/manifest.json ]; then
+            python3 fetch_daily.py
+          fi
 
       - name: Fetch intraday volatility
         if: github.event_name != 'push'
@@ -89,6 +102,7 @@ jobs:
           cp highlow.html _site/
           cp sectors.html _site/
           cp stock.html _site/
+          cp daily-history.js _site/
           cp reversal.html _site/
           cp cn-index.html _site/
           cp cn-highlow.html _site/

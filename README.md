@@ -8,9 +8,16 @@
 **无需 API key、无跨域问题、完全免费。**
 
 ## 为什么是这个架构
-StockAnalysis 的接口只返回「最近交易日」，没法查历史。所以我们换思路：
+StockAnalysis 的全市场快照接口只返回「最近交易日」，没法查历史。所以我们换思路：
 **每天跑一次脚本把当天快照存下来，自己逐日积累历史。** 历史从开始采集那天起往后攒，
 更早的日期无法补采。
+
+美股个股页和榜单 K 线也只读本站数据：`fetch_daily.py` 在 CI 从 StockAnalysis 拉取全市场每股五年 OHLCV，
+写入 `data/daily/<代码>.json`，由 `daily-history.js` 按需读取。上游历史接口目前未返回
+`Access-Control-Allow-Origin`，浏览器直接跨域调用会报 `Failed to fetch`；CI 抓取不受浏览器 CORS 限制。
+首次填充约 5500 只会比原流程耗时更久，默认 4 路并发；已有当日缓存时跳过请求，个别失败保留之前的有效数据。
+可用历史覆盖不足 95% 时终止部署，避免把上游大面积故障发布到网站。
+数据实际截止日显示在个股页统计窗口中。A 股详情页仍使用原有腾讯数据路径。
 
 ## 文件
 | 文件 | 作用 |
@@ -21,6 +28,7 @@ StockAnalysis 的接口只返回「最近交易日」，没法查历史。所以
 | `data/manifest.json` | 可用交易日清单，网页据此限定可选日期。 |
 | `data/<日期>.json` | 当天全市场快照（对象数组）。 |
 | `data/history.json` | 由脚本预计算：每股近 20 日收盘价（迷你走势图）+ 5/10/30 日年化波动率 + 全市场波动率指数。 |
+| `fetch_daily.py` / `daily-history.js` / `data/daily/<代码>.json` | 全市场每股五年日线缓存，供美股详情及 K 线弹窗同源读取。JSON 的 `fields` 为 `t,o,h,l,c,v,a`，`data` 是按日期升序的对应值数组；保留真实 OHLCV 与复权收盘。 |
 | `intraday.html` / `fetch_intraday.py` / `data/intraday.json` | 日内波动率排名页：最活跃 500 只的 Yahoo 5 分钟 K 线 → 每日已实现日内波动率，按 1D/5D/1M 平均排名。 |
 | `highlow.html` / `fetch_highlow.py` / `data/highlow.json` | 创新高/新低榜：最活跃 500 只的复权日线（261 交易日），窗口 1–52 周、严格收盘口径，按区间幅度排名。 |
 | `sectors.html` / `fetch_sectors.py` / `data/sectors.json` | 板块/行业相关性 3D 星系图：市值加权组合日收益的 Pearson 相关（1M/3M/6M/1Y），红=正相关、绿=负相关，可拖拽。 |
@@ -48,7 +56,14 @@ python3 -m http.server 8765
 手动抓一次当天数据：
 ```bash
 python3 fetch_snapshot.py
+python3 fetch_daily.py
 ```
+只验证个别股票可运行 `python3 fetch_daily.py --symbols HTFL NVDA BRK.B`。
+`data/daily/` 已加入 `.gitignore`：CI 用 Actions cache 恢复并更新它，部署时复制到 Pages artifact，
+避免每天把数百 MB 日线版本提交到 Git。首次部署或缓存被淘汰后自动重建，网页代码 push 可复用已有缓存。
+
+验证：`python3 -m unittest discover -s tests -p 'test_*.py' -v`。
+先抓取上述三个验证代码后，可用 Node.js 运行 `node tests/test_daily_history.mjs`，检查同源加载、错误重试、图表及筹码计算。
 
 ## 部署到 GitHub（云端自动 + 在线访问）
 1. 把本目录推到一个 GitHub 仓库。
@@ -66,8 +81,8 @@ python3 fetch_snapshot.py
 
 ## 迷你走势图 + K 线 + 波动率
 - **近20日迷你走势图**：读 `data/history.json` 里每股近 20 交易日收盘价画内嵌 SVG 折线（涨绿跌红），选历史日期时按该日期截断。
-- **K 线弹窗**：点击迷你走势图，用 [lightweight-charts](https://github.com/tradingview/lightweight-charts)（CDN）按需从 StockAnalysis 的
-  `api/symbol/s/<代码>/history?range=…&period=Daily`（开放 CORS，返回 OHLCV）画完整蜡烛图 + 成交量，可切 1M/6M/1Y/5Y。
+- **K 线弹窗**：点击迷你走势图，用 [lightweight-charts](https://github.com/tradingview/lightweight-charts)（CDN）按需读取
+  本站 `data/daily/<代码>.json` 画完整蜡烛图 + 成交量，可切 1M/3M/6M/1Y/5Y。上游请求由 CI 完成。
 - **波动率**：`fetch_snapshot.py` 预计算，列里显示 0–100「波动率指数」，可排序，悬浮看 5/10/30 日年化%。
 
 ### 波动率算法

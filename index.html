@@ -746,6 +746,7 @@
     </div>
   </div>
 
+  <script src="./daily-history.js"></script>
   <script>
     // 网页只读由 fetch_snapshot.py 每日生成的本地快照：
     //   data/manifest.json     —— 可用交易日清单
@@ -1156,12 +1157,11 @@
     const chartEl = document.getElementById("chart");
     let chart = null, candleSeries = null, volSeries = null;
     let chartSym = null, chartName = "", chartRange = "6M";
-    const ohlcCache = new Map();   // key: SYM|API_RANGE -> 升序 OHLC 数组
+    const ohlcCache = new Map();   // key: SYM|RANGE -> 升序 OHLC 数组
 
-    // StockAnalysis 只认 3M/6M/1Y/5Y 等；1M 不识别（会退化成 1 年）。
-    // 故按钮 → { api: 实际请求的区间, tail: 只保留最后 N 个交易日（0=全部） }。
+    // 按钮 → 本地历史区间；1M 沿用最近 22 个交易日的显示口径。
     const RANGE_MAP = {
-      "1M": { api: "6M", tail: 22 },   // 拉 6M 再切最后约一个月；与 6M 共用同一次请求
+      "1M": { api: "6M", tail: 22 },
       "3M": { api: "3M", tail: 0 },
       "6M": { api: "6M", tail: 0 },
       "1Y": { api: "1Y", tail: 0 },
@@ -1193,21 +1193,14 @@
     async function fetchOHLC(sym, range) {
       const key = `${sym}|${range}`;
       if (ohlcCache.has(key)) return ohlcCache.get(key);
-      const tryFetch = async (s) => {
-        const url = `https://stockanalysis.com/api/symbol/s/${encodeURIComponent(s)}/history?range=${range}&period=Daily`;
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 12000);   // 12s 超时，避免无限「正在加载」
-        try {
-          const res = await fetch(url, { signal: ctrl.signal });
-          if (!res.ok) return null;
-          const json = await res.json();
-          return (json && json.data) || null;
-        } finally {
-          clearTimeout(timer);
-        }
-      };
-      let data = await tryFetch(sym);
-      if (!data && sym.includes(".")) data = await tryFetch(sym.replace(/\./g, "-"));
+      let data = await StockHistory.load(sym);
+      const months = { "1M": 1, "3M": 3, "6M": 6, "1Y": 12, "5Y": 60 }[range];
+      if (months && data.length) {
+        const cutoff = new Date(`${data[data.length - 1].t}T00:00:00Z`);
+        cutoff.setUTCMonth(cutoff.getUTCMonth() - months);
+        const start = cutoff.toISOString().slice(0, 10);
+        data = data.filter((d) => d.t >= start);
+      }
       const rows = (data || [])
         .filter((d) => d && d.t && d.o != null && d.h != null && d.l != null && d.c != null)
         .map((d) => ({ time: d.t, open: +d.o, high: +d.h, low: +d.l, close: +d.c, volume: +d.v }))
